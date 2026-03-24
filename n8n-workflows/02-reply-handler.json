@@ -1,0 +1,254 @@
+{
+  "name": "Plusvibe Reply Handler → HubSpot",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "plusvibe-reply",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "reply-webhook",
+      "name": "Plusvibe Reply Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "plusvibe-reply"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// NORMALIZE PLUSVIBE WEBHOOK EVENT\n// ============================================================\nconst raw = $input.item.json;\n\nreturn {\n  json: {\n    event_type:    (raw.event || raw.event_type || 'unknown').toLowerCase(),\n    email:         raw.contact?.email || raw.email || '',\n    first_name:    raw.contact?.first_name || raw.first_name || '',\n    last_name:     raw.contact?.last_name || raw.last_name || '',\n    campaign_id:   raw.campaign_id || '',\n    reply_text:    raw.reply_text || raw.body || '',\n    bounce_type:   raw.bounce_type || '',\n    sequence_step: raw.sequence_step || raw.step || 0,\n    event_time:    raw.replied_at || raw.bounced_at || raw.timestamp || new Date().toISOString()\n  }\n};"
+      },
+      "id": "normalize-reply",
+      "name": "Normalize Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "reply",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Reply"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "bounce",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Bounce"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "unsubscribe",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Unsubscribe"
+            }
+          ],
+          "fallbackOutput": {
+            "renameOutput": true,
+            "outputKey": "Other"
+          }
+        },
+        "options": {}
+      },
+      "id": "switch-event",
+      "name": "Switch: Event Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              { "property": "outreach_status", "value": "replied" },
+              { "property": "reply_date", "value": "={{ $json.event_time }}" },
+              { "property": "pipeline_notes", "value": "=Reply (step {{ $json.sequence_step }}): {{ $json.reply_text.substring(0, 500) }}" }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "hubspot-reply",
+      "name": "HubSpot: Mark Replied",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [940, 160],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "REPLACE_WITH_HUBSPOT_CREDENTIAL_ID",
+          "name": "HubSpot OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              { "property": "outreach_status", "value": "bounced" },
+              { "property": "pipeline_notes", "value": "=Bounce type: {{ $json.bounce_type }} at {{ $json.event_time }}" }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "hubspot-bounce",
+      "name": "HubSpot: Mark Bounced",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [940, 340],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "REPLACE_WITH_HUBSPOT_CREDENTIAL_ID",
+          "name": "HubSpot OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              { "property": "outreach_status", "value": "unsubscribed" },
+              { "property": "pipeline_notes", "value": "=Unsubscribed at {{ $json.event_time }}" }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "hubspot-unsub",
+      "name": "HubSpot: Mark Unsubscribed",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [940, 520],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "REPLACE_WITH_HUBSPOT_CREDENTIAL_ID",
+          "name": "HubSpot OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Reply Log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "sheet-reply-log",
+      "name": "Sheet: Log Reply",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1160, 160],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Plusvibe Reply Webhook": {
+      "main": [
+        [
+          { "node": "Normalize Event", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Normalize Event": {
+      "main": [
+        [
+          { "node": "Switch: Event Type", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Switch: Event Type": {
+      "main": [
+        [
+          { "node": "HubSpot: Mark Replied", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "HubSpot: Mark Bounced", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "HubSpot: Mark Unsubscribed", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    },
+    "HubSpot: Mark Replied": {
+      "main": [
+        [
+          { "node": "Sheet: Log Reply", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "America/New_York",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "tags": [
+    { "name": "outbound-pipeline" },
+    { "name": "reply-handler" }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}

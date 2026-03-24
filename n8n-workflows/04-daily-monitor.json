@@ -1,0 +1,190 @@
+{
+  "name": "Daily Pipeline Health Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "daily-trigger",
+      "name": "Daily 8 AM Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Success Log"
+        },
+        "options": {
+          "range": "A:Z"
+        }
+      },
+      "id": "read-success-log",
+      "name": "Read Success Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 200],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Filtered Leads"
+        },
+        "options": {
+          "range": "A:Z"
+        }
+      },
+      "id": "read-filtered-log",
+      "name": "Read Filtered Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ============================================================\n// COMPILE DAILY PIPELINE HEALTH REPORT\n// ============================================================\n\nconst successItems = $('Read Success Log').all();\nconst filteredItems = $('Read Filtered Log').all();\n\nconst now = new Date();\nconst yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);\nconst yesterdayISO = yesterday.toISOString().split('T')[0];\n\n// Count items from the last 24 hours\nfunction countRecent(items) {\n  return items.filter(item => {\n    const ts = item.json.timestamp || '';\n    return ts >= yesterdayISO;\n  }).length;\n}\n\nfunction countRecentByReason(items, reason) {\n  return items.filter(item => {\n    const ts = item.json.timestamp || '';\n    return ts >= yesterdayISO && (item.json.reason || '').includes(reason);\n  }).length;\n}\n\nconst successCount = countRecent(successItems);\nconst filteredCount = countRecent(filteredItems);\nconst totalProcessed = successCount + filteredCount;\n\nconst titleFiltered = countRecentByReason(filteredItems, 'title');\nconst locationFiltered = countRecentByReason(filteredItems, 'location');\nconst industryFiltered = countRecentByReason(filteredItems, 'industry');\nconst noEmailCount = countRecentByReason(filteredItems, 'no_email');\n\nconst icpRate = totalProcessed > 0 ? ((successCount / totalProcessed) * 100).toFixed(1) : '0';\n\n// Alert flags\nconst alerts = [];\nif (totalProcessed === 0) alerts.push('WARNING: Zero leads processed in last 24h — check Cornersight webhook');\nif (parseFloat(icpRate) < 5 && totalProcessed > 0) alerts.push('WARNING: ICP match rate below 5% — review filter settings');\n\nconst report = `\nPIPELINE DAILY REPORT — ${yesterdayISO}\n========================================\n\nLeads processed:        ${totalProcessed}\nICP matches (success):  ${successCount} (${icpRate}%)\nFiltered out:           ${filteredCount}\n\nFilter breakdown:\n  - Title mismatch:     ${titleFiltered}\n  - Location mismatch:  ${locationFiltered}\n  - Industry mismatch:  ${industryFiltered}\n  - No email found:     ${noEmailCount}\n\n${alerts.length > 0 ? '\\nALERTS:\\n' + alerts.map(a => '  ' + a).join('\\n') : 'No alerts.'}\n`.trim();\n\nreturn [{\n  json: {\n    report,\n    total_processed: totalProcessed,\n    success_count: successCount,\n    filtered_count: filteredCount,\n    icp_rate: icpRate,\n    alerts: alerts,\n    date: yesterdayISO\n  }\n}];"
+      },
+      "id": "compile-report",
+      "name": "Compile Daily Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "REPLACE_WITH_ADMIN_EMAIL",
+        "toEmail": "REPLACE_WITH_ADMIN_EMAIL",
+        "subject": "=Pipeline Daily Report — {{ $json.date }} | {{ $json.success_count }} leads processed",
+        "emailType": "text",
+        "message": "={{ $json.report }}",
+        "options": {}
+      },
+      "id": "send-report-email",
+      "name": "Email: Daily Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [960, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.alerts.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-alerts",
+      "name": "Any Alerts?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [960, 420]
+    },
+    {
+      "parameters": {
+        "fromEmail": "REPLACE_WITH_ADMIN_EMAIL",
+        "toEmail": "REPLACE_WITH_ADMIN_EMAIL",
+        "subject": "=ALERT: Pipeline Issue Detected — {{ $json.date }}",
+        "emailType": "text",
+        "message": "=PIPELINE ALERT\n\n{{ $json.alerts.join('\\n') }}\n\nFull report:\n{{ $json.report }}",
+        "options": {}
+      },
+      "id": "send-alert-email",
+      "name": "Email: Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1180, 420]
+    }
+  ],
+  "connections": {
+    "Daily 8 AM Check": {
+      "main": [
+        [
+          { "node": "Read Success Log", "type": "main", "index": 0 },
+          { "node": "Read Filtered Log", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read Success Log": {
+      "main": [
+        [
+          { "node": "Compile Daily Report", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read Filtered Log": {
+      "main": [
+        [
+          { "node": "Compile Daily Report", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Compile Daily Report": {
+      "main": [
+        [
+          { "node": "Email: Daily Report", "type": "main", "index": 0 },
+          { "node": "Any Alerts?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Any Alerts?": {
+      "main": [
+        [
+          { "node": "Email: Alert", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "America/New_York"
+  },
+  "tags": [
+    { "name": "outbound-pipeline" },
+    { "name": "monitoring" }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}

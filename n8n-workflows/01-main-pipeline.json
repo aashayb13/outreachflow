@@ -1,0 +1,620 @@
+{
+  "name": "Cornersight Outbound Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cornersight-inbound",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Cornersight Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "cornersight-inbound"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "respond-ok",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// NORMALIZE CORNERSIGHT PAYLOAD\n// ============================================================\n// Cornersight may send single events or batches.\n// This node normalises every payload into a consistent shape.\n// If a batch array is detected, upstream 'Split In Batches'\n// will have already broken it into individual items.\n// ============================================================\n\nconst raw = $input.item.json;\n\n// Handle both flat and nested payload shapes\nconst data = raw.engagement || raw;\n\nconst fullName = (data.person_name || data.name || '').trim();\nconst parts = fullName.split(' ');\nconst firstName = parts[0] || '';\nconst lastName  = parts.slice(1).join(' ') || '';\n\nreturn {\n  json: {\n    first_name:       firstName,\n    last_name:        lastName,\n    full_name:        fullName,\n    linkedin_url:     (data.linkedin_url || data.profile_url || '').trim(),\n    post_url:         (data.post_url || '').trim(),\n    engagement_type:  (data.engagement_type || data.type || 'like').toLowerCase(),\n    comment_text:     (data.comment_text || data.comment || ''),\n    job_title:        (data.job_title || data.title || '').trim(),\n    company:          (data.company || data.company_name || '').trim(),\n    location:         (data.location || '').trim(),\n    industry:         (data.industry || '').trim(),\n    monitor_name:     (data.monitor_name || data.monitor || data.source || 'Unknown'),\n    received_at:      new Date().toISOString()\n  }\n};"
+      },
+      "id": "normalize-data",
+      "name": "Normalize Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// BATCH SPLITTER\n// ============================================================\n// If Cornersight sends a daily batch with an \"engagements\" array,\n// split it into individual items. If it is a single event, pass through.\n// ============================================================\n\nconst raw = $input.item.json;\n\nif (Array.isArray(raw.engagements) && raw.engagements.length > 0) {\n  // Batch payload — return each engagement as a separate item\n  return raw.engagements.map(e => ({\n    json: {\n      ...e,\n      monitor_name: e.monitor_name || raw.monitor_name || 'Unknown'\n    }\n  }));\n}\n\n// Single event — pass through as-is\nreturn [{ json: raw }];"
+      },
+      "id": "batch-splitter",
+      "name": "Split Batch Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 480]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "title-check",
+              "leftValue": "={{ $json.job_title.toLowerCase() }}",
+              "rightValue": "ceo|owner|president|founder|co-founder|cofounder|vp of operations|vice president|general manager|director of operations|operations manager|coo|chief operating|managing partner|managing director|principal|business owner",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-title",
+      "name": "Filter: Job Title",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "location-check",
+              "leftValue": "={{ $json.location.toLowerCase() }}",
+              "rightValue": "\\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming|united states|usa|u\\.s\\.)\\b",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-location",
+      "name": "Filter: US Location",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "industry-check",
+              "leftValue": "={{ ($json.industry + ' ' + $json.company + ' ' + $json.job_title).toLowerCase() }}",
+              "rightValue": "hvac|heating|cooling|air conditioning|plumb|electrical|electrician|roof|contract|construct|landscape|lawn|pest control|exterminator|clean|janitorial|restoration|water damage|fire damage|mold|moving|relocation|property management|facilit|fleet|solar|garage door|paint|floor|fenc|tree service|tree care|arborist|pool service|pool maintenance|home service|home improvement|field service|trades|handyman|remodel|renovation|demolition|excavat|concrete|masonry|weld|insulation|window|gutter|chimney|septic|irrigation|sprinkler|locksmith|appliance repair",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-industry",
+      "name": "Filter: Field Services",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.leadmagic.io/v1/email/find",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"first_name\": \"{{ $json.first_name }}\",\n  \"last_name\": \"{{ $json.last_name }}\",\n  \"domain\": \"{{ $json.company.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() }}.com\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          },
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "retryInterval": 5000,
+            "retryOnStatus": "429,500,502,503"
+          }
+        }
+      },
+      "id": "lead-magic-enrich",
+      "name": "Lead Magic: Find Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_LEAD_MAGIC_CREDENTIAL_ID",
+          "name": "Lead Magic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// MERGE LEAD MAGIC RESPONSE WITH ORIGINAL LEAD DATA\n// ============================================================\n\nconst lead    = $('Normalize Fields').item.json;\nconst enriched = $input.item.json;\n\nreturn {\n  json: {\n    ...lead,\n    email:      enriched.email || null,\n    confidence: enriched.confidence || 0,\n    email_type: enriched.type || 'unknown',\n    // Override with Lead Magic data if our original was empty\n    company:    lead.company || enriched.company || '',\n    job_title:  lead.job_title || enriched.job_title || '',\n    location:   lead.location || enriched.location || ''\n  }\n};"
+      },
+      "id": "merge-enrichment",
+      "name": "Merge Enrichment Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "email-exists",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "confidence-threshold",
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": 0.7,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-email-found",
+      "name": "Email Found + High Confidence?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// DETERMINE PLUSVIBE CAMPAIGN ID BASED ON MONITOR SOURCE\n// ============================================================\n// IMPORTANT: Replace the placeholder campaign IDs below with\n// your actual Plusvibe campaign IDs after creating them.\n// ============================================================\n\nconst CAMPAIGN_MAP = {\n  'Jobber':       'REPLACE_WITH_JOBBER_CAMPAIGN_ID',\n  'ServiceTitan': 'REPLACE_WITH_SERVICETITAN_CAMPAIGN_ID',\n  'Cold IQ':      'REPLACE_WITH_COLDIQ_CAMPAIGN_ID',\n  'Housecall Pro': 'REPLACE_WITH_HOUSECALLPRO_CAMPAIGN_ID',\n  'FieldEdge':    'REPLACE_WITH_FIELDEDGE_CAMPAIGN_ID',\n  'GoHighLevel':  'REPLACE_WITH_GOHIGHLEVEL_CAMPAIGN_ID',\n  'Tommy Mello':  'REPLACE_WITH_TOMMYMELLO_CAMPAIGN_ID',\n  'Adi Klevit':   'REPLACE_WITH_ADIKLEVIT_CAMPAIGN_ID',\n  'Successware':  'REPLACE_WITH_SUCCESSWARE_CAMPAIGN_ID',\n  'BuildOps':     'REPLACE_WITH_BUILDOPS_CAMPAIGN_ID'\n};\n\nconst DEFAULT_CAMPAIGN = 'REPLACE_WITH_DEFAULT_CAMPAIGN_ID';\n\nconst monitor = $json.monitor_name || 'Unknown';\nconst campaignId = CAMPAIGN_MAP[monitor] || DEFAULT_CAMPAIGN;\n\n// Truncate comment for email personalization\nconst commentSnippet = ($json.comment_text || '').substring(0, 80);\n\nreturn {\n  json: {\n    ...$json,\n    campaign_id: campaignId,\n    comment_snippet: commentSnippet\n  }\n};"
+      },
+      "id": "route-campaign",
+      "name": "Route to Campaign",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.plusvibe.ai/v1/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Workspace-Id",
+              "value": "REPLACE_WITH_PLUSVIBE_WORKSPACE_ID"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email\": \"{{ $json.email }}\",\n  \"first_name\": \"{{ $json.first_name }}\",\n  \"last_name\": \"{{ $json.last_name }}\",\n  \"company_name\": \"{{ $json.company }}\",\n  \"campaign_id\": \"{{ $json.campaign_id }}\",\n  \"custom_variables\": {\n    \"linkedin_url\": \"{{ $json.linkedin_url }}\",\n    \"engagement_type\": \"{{ $json.engagement_type }}\",\n    \"post_url\": \"{{ $json.post_url }}\",\n    \"comment_text\": \"{{ $json.comment_snippet }}\",\n    \"monitor_name\": \"{{ $json.monitor_name }}\",\n    \"industry\": \"{{ $json.industry }}\"\n  }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          },
+          "timeout": 15000,
+          "retry": {
+            "maxTries": 2,
+            "retryInterval": 3000,
+            "retryOnStatus": "429,500,502,503"
+          }
+        }
+      },
+      "id": "plusvibe-add",
+      "name": "Plusvibe: Add to Campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_PLUSVIBE_CREDENTIAL_ID",
+          "name": "Plusvibe API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "firstName": "={{ $('Route to Campaign').item.json.first_name }}",
+          "lastName": "={{ $('Route to Campaign').item.json.last_name }}",
+          "company": "={{ $('Route to Campaign').item.json.company }}",
+          "jobTitle": "={{ $('Route to Campaign').item.json.job_title }}",
+          "city": "={{ $('Route to Campaign').item.json.location }}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              { "property": "lead_source", "value": "cornersight_linkedin" },
+              { "property": "linkedin_url", "value": "={{ $('Route to Campaign').item.json.linkedin_url }}" },
+              { "property": "engaged_post_url", "value": "={{ $('Route to Campaign').item.json.post_url }}" },
+              { "property": "engagement_type", "value": "={{ $('Route to Campaign').item.json.engagement_type }}" },
+              { "property": "comment_text", "value": "={{ $('Route to Campaign').item.json.comment_text }}" },
+              { "property": "enrichment_confidence", "value": "={{ $('Route to Campaign').item.json.confidence }}" },
+              { "property": "plusvibe_campaign", "value": "={{ $('Route to Campaign').item.json.campaign_id }}" },
+              { "property": "outreach_status", "value": "queued" },
+              { "property": "source_monitor", "value": "={{ $('Route to Campaign').item.json.monitor_name }}" }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "hubspot-upsert",
+      "name": "HubSpot: Create/Update Contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [2660, 300],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "REPLACE_WITH_HUBSPOT_CREDENTIAL_ID",
+          "name": "HubSpot OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// LOG SUCCESSFUL LEAD PROCESSING\n// ============================================================\nconst lead = $('Route to Campaign').item.json;\n\nreturn {\n  json: {\n    status: 'SUCCESS',\n    email: lead.email,\n    name: `${lead.first_name} ${lead.last_name}`,\n    company: lead.company,\n    monitor: lead.monitor_name,\n    campaign: lead.campaign_id,\n    confidence: lead.confidence,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "log-success",
+      "name": "Log: Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Success Log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "sheet-success",
+      "name": "Sheet: Log Success",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [3100, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// LOG FILTERED-OUT / FAILED LEADS\n// ============================================================\n// This node receives leads that were dropped at any filter stage\n// or failed enrichment. It determines the reason and logs it.\n// ============================================================\n\nconst lead = $input.item.json;\nlet reason = 'unknown';\n\n// Determine which filter dropped this lead based on the source node\nconst sourceNode = $input.item.json._filterSource || 'unknown';\n\nreturn {\n  json: {\n    status: 'FILTERED',\n    reason: sourceNode,\n    name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.full_name || 'Unknown',\n    linkedin_url: lead.linkedin_url || '',\n    job_title: lead.job_title || '',\n    company: lead.company || '',\n    location: lead.location || '',\n    industry: lead.industry || '',\n    monitor: lead.monitor_name || '',\n    email: lead.email || '',\n    confidence: lead.confidence || '',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "log-filtered",
+      "name": "Log: Filtered/Failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 600]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "REPLACE_WITH_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Filtered Leads"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "sheet-filtered",
+      "name": "Sheet: Log Filtered",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1780, 600],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Tag this item with the filter that rejected it\nreturn {\n  json: {\n    ...$json,\n    _filterSource: 'title_mismatch'\n  }\n};"
+      },
+      "id": "tag-title-fail",
+      "name": "Tag: Title Fail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    _filterSource: 'location_mismatch'\n  }\n};"
+      },
+      "id": "tag-location-fail",
+      "name": "Tag: Location Fail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    _filterSource: 'industry_mismatch'\n  }\n};"
+      },
+      "id": "tag-industry-fail",
+      "name": "Tag: Industry Fail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    _filterSource: 'no_email_or_low_confidence'\n  }\n};"
+      },
+      "id": "tag-email-fail",
+      "name": "Tag: No Email/Low Confidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 500]
+    }
+  ],
+  "connections": {
+    "Cornersight Webhook": {
+      "main": [
+        [
+          { "node": "Respond 200 OK", "type": "main", "index": 0 },
+          { "node": "Split Batch Events", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Respond 200 OK": {
+      "main": [[]]
+    },
+    "Split Batch Events": {
+      "main": [
+        [
+          { "node": "Normalize Fields", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Normalize Fields": {
+      "main": [
+        [
+          { "node": "Filter: Job Title", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filter: Job Title": {
+      "main": [
+        [
+          { "node": "Filter: US Location", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Tag: Title Fail", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filter: US Location": {
+      "main": [
+        [
+          { "node": "Filter: Field Services", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Tag: Location Fail", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filter: Field Services": {
+      "main": [
+        [
+          { "node": "Lead Magic: Find Email", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Tag: Industry Fail", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Tag: Title Fail": {
+      "main": [
+        [
+          { "node": "Log: Filtered/Failed", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Tag: Location Fail": {
+      "main": [
+        [
+          { "node": "Log: Filtered/Failed", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Tag: Industry Fail": {
+      "main": [
+        [
+          { "node": "Log: Filtered/Failed", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Lead Magic: Find Email": {
+      "main": [
+        [
+          { "node": "Merge Enrichment Data", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Merge Enrichment Data": {
+      "main": [
+        [
+          { "node": "Email Found + High Confidence?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Email Found + High Confidence?": {
+      "main": [
+        [
+          { "node": "Route to Campaign", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Tag: No Email/Low Confidence", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Tag: No Email/Low Confidence": {
+      "main": [
+        [
+          { "node": "Log: Filtered/Failed", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Route to Campaign": {
+      "main": [
+        [
+          { "node": "Plusvibe: Add to Campaign", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Plusvibe: Add to Campaign": {
+      "main": [
+        [
+          { "node": "HubSpot: Create/Update Contact", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "HubSpot: Create/Update Contact": {
+      "main": [
+        [
+          { "node": "Log: Success", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Log: Success": {
+      "main": [
+        [
+          { "node": "Sheet: Log Success", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Log: Filtered/Failed": {
+      "main": [
+        [
+          { "node": "Sheet: Log Filtered", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "timezone": "America/New_York",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "outbound-pipeline" },
+    { "name": "cornersight" },
+    { "name": "production" }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}

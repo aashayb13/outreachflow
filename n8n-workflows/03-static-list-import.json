@@ -1,0 +1,323 @@
+{
+  "name": "Static List Import → Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 9 AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "REPLACE_WITH_IMPORT_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Import Queue"
+        },
+        "filters": {
+          "filter": {
+            "conditions": [
+              {
+                "leftValue": "={{ $json.status }}",
+                "rightValue": "pending",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ]
+          }
+        },
+        "options": {
+          "range": "A:Z"
+        }
+      },
+      "id": "read-import-sheet",
+      "name": "Read Import Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 20,
+        "options": {}
+      },
+      "id": "batch-process",
+      "name": "Process in Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// NORMALIZE STATIC LIST IMPORT ROW\n// ============================================================\n// Expects Google Sheet columns:\n// first_name, last_name, company, job_title, location,\n// industry, linkedin_url, website, source_list\n// ============================================================\n\nconst row = $input.item.json;\n\nreturn {\n  json: {\n    first_name:   (row.first_name || '').trim(),\n    last_name:    (row.last_name || '').trim(),\n    company:      (row.company || row.company_name || '').trim(),\n    job_title:    (row.job_title || row.title || '').trim(),\n    location:     (row.location || row.city || '').trim(),\n    industry:     (row.industry || '').trim(),\n    linkedin_url: (row.linkedin_url || row.linkedin || '').trim(),\n    website:      (row.website || row.domain || '').trim(),\n    source_list:  (row.source_list || row.source || 'static_import').trim(),\n    row_number:   row.row_number || row.__rowNumber || 0\n  }\n};"
+      },
+      "id": "normalize-import",
+      "name": "Normalize Import Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.leadmagic.io/v1/email/find",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"first_name\": \"{{ $json.first_name }}\",\n  \"last_name\": \"{{ $json.last_name }}\",\n  \"domain\": \"{{ $json.website ? $json.website.replace(/^https?:\\/\\//, '').replace(/\\/.*$/, '') : $json.company.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() + '.com' }}\"\n}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 2,
+            "retryInterval": 5000,
+            "retryOnStatus": "429,500,502,503"
+          }
+        }
+      },
+      "id": "lead-magic-import",
+      "name": "Lead Magic: Find Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_LEAD_MAGIC_CREDENTIAL_ID",
+          "name": "Lead Magic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const lead = $('Normalize Import Row').item.json;\nconst enriched = $input.item.json;\n\nreturn {\n  json: {\n    ...lead,\n    email:      enriched.email || null,\n    confidence: enriched.confidence || 0\n  }\n};"
+      },
+      "id": "merge-import-enrichment",
+      "name": "Merge Enrichment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            },
+            {
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": 0.7,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-import-email",
+      "name": "Email Found?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.plusvibe.ai/v1/contacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Workspace-Id", "value": "REPLACE_WITH_PLUSVIBE_WORKSPACE_ID" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email\": \"{{ $json.email }}\",\n  \"first_name\": \"{{ $json.first_name }}\",\n  \"last_name\": \"{{ $json.last_name }}\",\n  \"company_name\": \"{{ $json.company }}\",\n  \"campaign_id\": \"REPLACE_WITH_STATIC_IMPORT_CAMPAIGN_ID\",\n  \"custom_variables\": {\n    \"linkedin_url\": \"{{ $json.linkedin_url }}\",\n    \"industry\": \"{{ $json.industry }}\",\n    \"source_list\": \"{{ $json.source_list }}\"\n  }\n}",
+        "options": {
+          "timeout": 15000,
+          "retry": { "maxTries": 2, "retryInterval": 3000, "retryOnStatus": "429,500,502,503" }
+        }
+      },
+      "id": "plusvibe-import-add",
+      "name": "Plusvibe: Add to Import Campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_PLUSVIBE_CREDENTIAL_ID",
+          "name": "Plusvibe API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "firstName": "={{ $('Merge Enrichment').item.json.first_name }}",
+          "lastName": "={{ $('Merge Enrichment').item.json.last_name }}",
+          "company": "={{ $('Merge Enrichment').item.json.company }}",
+          "jobTitle": "={{ $('Merge Enrichment').item.json.job_title }}",
+          "city": "={{ $('Merge Enrichment').item.json.location }}",
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              { "property": "lead_source", "value": "static_list" },
+              { "property": "linkedin_url", "value": "={{ $('Merge Enrichment').item.json.linkedin_url }}" },
+              { "property": "enrichment_confidence", "value": "={{ $('Merge Enrichment').item.json.confidence }}" },
+              { "property": "outreach_status", "value": "queued" },
+              { "property": "source_monitor", "value": "={{ $('Merge Enrichment').item.json.source_list }}" }
+            ]
+          }
+        },
+        "options": {}
+      },
+      "id": "hubspot-import-upsert",
+      "name": "HubSpot: Create/Update",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [2000, 300],
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "REPLACE_WITH_HUBSPOT_CREDENTIAL_ID",
+          "name": "HubSpot OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "unit": "seconds",
+        "value": 2
+      },
+      "id": "rate-limit-wait",
+      "name": "Wait 2s (Rate Limit)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2220, 300]
+    }
+  ],
+  "connections": {
+    "Daily 9 AM Trigger": {
+      "main": [
+        [
+          { "node": "Read Import Queue", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read Import Queue": {
+      "main": [
+        [
+          { "node": "Process in Batches", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Process in Batches": {
+      "main": [
+        [
+          { "node": "Normalize Import Row", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Normalize Import Row": {
+      "main": [
+        [
+          { "node": "Lead Magic: Find Email", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Lead Magic: Find Email": {
+      "main": [
+        [
+          { "node": "Merge Enrichment", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Merge Enrichment": {
+      "main": [
+        [
+          { "node": "Email Found?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Email Found?": {
+      "main": [
+        [
+          { "node": "Plusvibe: Add to Import Campaign", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    },
+    "Plusvibe: Add to Import Campaign": {
+      "main": [
+        [
+          { "node": "HubSpot: Create/Update", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "HubSpot: Create/Update": {
+      "main": [
+        [
+          { "node": "Wait 2s (Rate Limit)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Wait 2s (Rate Limit)": {
+      "main": [
+        [
+          { "node": "Process in Batches", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "America/New_York",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "tags": [
+    { "name": "outbound-pipeline" },
+    { "name": "static-import" }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}

@@ -1,0 +1,125 @@
+{
+  "description": "Custom HubSpot contact properties for the outbound pipeline. Create these in HubSpot before going live.",
+  "property_group": {
+    "name": "Outbound Pipeline",
+    "label": "Outbound Pipeline",
+    "displayOrder": 1
+  },
+  "properties": [
+    {
+      "name": "lead_source",
+      "label": "Lead Source",
+      "type": "enumeration",
+      "fieldType": "select",
+      "groupName": "contactinformation",
+      "options": [
+        {"label": "Cornersight LinkedIn", "value": "cornersight_linkedin"},
+        {"label": "Static List Import", "value": "static_list"},
+        {"label": "Website Visitor", "value": "website_visitor"},
+        {"label": "Manual Entry", "value": "manual"}
+      ]
+    },
+    {
+      "name": "linkedin_url",
+      "label": "LinkedIn URL",
+      "type": "string",
+      "fieldType": "text",
+      "groupName": "contactinformation"
+    },
+    {
+      "name": "engaged_post_url",
+      "label": "Engaged Post URL",
+      "type": "string",
+      "fieldType": "text",
+      "groupName": "outbound_pipeline"
+    },
+    {
+      "name": "engagement_type",
+      "label": "Engagement Type",
+      "type": "enumeration",
+      "fieldType": "select",
+      "groupName": "outbound_pipeline",
+      "options": [
+        {"label": "Like", "value": "like"},
+        {"label": "Comment", "value": "comment"}
+      ]
+    },
+    {
+      "name": "comment_text",
+      "label": "Comment Text",
+      "type": "string",
+      "fieldType": "textarea",
+      "groupName": "outbound_pipeline"
+    },
+    {
+      "name": "enrichment_confidence",
+      "label": "Enrichment Confidence",
+      "type": "number",
+      "fieldType": "number",
+      "groupName": "outbound_pipeline",
+      "description": "Lead Magic email confidence score (0 to 1)"
+    },
+    {
+      "name": "plusvibe_campaign",
+      "label": "Plusvibe Campaign",
+      "type": "string",
+      "fieldType": "text",
+      "groupName": "outbound_pipeline"
+    },
+    {
+      "name": "outreach_status",
+      "label": "Outreach Status",
+      "type": "enumeration",
+      "fieldType": "select",
+      "groupName": "outbound_pipeline",
+      "options": [
+        {"label": "Queued", "value": "queued"},
+        {"label": "Sent", "value": "sent"},
+        {"label": "Opened", "value": "opened"},
+        {"label": "Replied", "value": "replied"},
+        {"label": "Booked", "value": "booked"},
+        {"label": "Not Interested", "value": "not_interested"},
+        {"label": "Bounced", "value": "bounced"},
+        {"label": "Unsubscribed", "value": "unsubscribed"}
+      ]
+    },
+    {
+      "name": "manus_lead_score",
+      "label": "Manus Lead Score",
+      "type": "number",
+      "fieldType": "number",
+      "groupName": "outbound_pipeline",
+      "description": "AI-generated lead score from Manus AI (0-100)"
+    },
+    {
+      "name": "source_monitor",
+      "label": "Source Monitor",
+      "type": "string",
+      "fieldType": "text",
+      "groupName": "outbound_pipeline",
+      "description": "Which Cornersight monitor captured this lead"
+    },
+    {
+      "name": "first_outreach_date",
+      "label": "First Outreach Date",
+      "type": "date",
+      "fieldType": "date",
+      "groupName": "outbound_pipeline"
+    },
+    {
+      "name": "reply_date",
+      "label": "Reply Date",
+      "type": "date",
+      "fieldType": "date",
+      "groupName": "outbound_pipeline"
+    },
+    {
+      "name": "pipeline_notes",
+      "label": "Pipeline Notes",
+      "type": "string",
+      "fieldType": "textarea",
+      "groupName": "outbound_pipeline",
+      "description": "Auto-populated notes from pipeline events (replies, bounces, etc.)"
+    }
+  ]
+}

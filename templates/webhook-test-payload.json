@@ -1,0 +1,108 @@
+{
+  "description": "Sample Cornersight webhook payload for testing the n8n pipeline. Send this via curl or n8n test mode.",
+  "test_payloads": [
+    {
+      "scenario": "Perfect ICP match — CEO, HVAC, Texas, commented",
+      "payload": {
+        "person_name": "John Smith",
+        "linkedin_url": "https://www.linkedin.com/in/john-smith-hvac",
+        "post_url": "https://www.linkedin.com/posts/jobber_field-service-scheduling-tips",
+        "engagement_type": "comment",
+        "comment_text": "This is exactly what we needed for our HVAC fleet!",
+        "job_title": "CEO",
+        "company": "Smith HVAC Services",
+        "location": "Dallas, TX",
+        "industry": "HVAC",
+        "monitor_name": "Jobber",
+        "timestamp": "2026-03-24T14:30:00Z"
+      },
+      "expected_result": "Should pass all filters, get enriched, added to campaign, and created in HubSpot"
+    },
+    {
+      "scenario": "ICP match — Owner, Plumbing, Florida, liked",
+      "payload": {
+        "person_name": "Maria Rodriguez",
+        "linkedin_url": "https://www.linkedin.com/in/maria-rodriguez-plumbing",
+        "post_url": "https://www.linkedin.com/posts/servicetitan_plumbing-growth",
+        "engagement_type": "like",
+        "comment_text": null,
+        "job_title": "Owner",
+        "company": "Rodriguez Plumbing & Drain",
+        "location": "Miami, FL",
+        "industry": "Plumbing",
+        "monitor_name": "ServiceTitan",
+        "timestamp": "2026-03-24T15:00:00Z"
+      },
+      "expected_result": "Should pass all filters, get enriched, added to ServiceTitan campaign"
+    },
+    {
+      "scenario": "FAIL — Wrong job title (Marketing Manager)",
+      "payload": {
+        "person_name": "Emily Chen",
+        "linkedin_url": "https://www.linkedin.com/in/emily-chen-marketing",
+        "post_url": "https://www.linkedin.com/posts/jobber_marketing-tips",
+        "engagement_type": "like",
+        "comment_text": null,
+        "job_title": "Marketing Manager",
+        "company": "Big Roof Co",
+        "location": "Phoenix, AZ",
+        "industry": "Roofing",
+        "monitor_name": "Jobber",
+        "timestamp": "2026-03-24T15:30:00Z"
+      },
+      "expected_result": "Should FAIL at job title filter, logged to filtered_title sheet"
+    },
+    {
+      "scenario": "FAIL — Outside US (Canada)",
+      "payload": {
+        "person_name": "Robert Thompson",
+        "linkedin_url": "https://www.linkedin.com/in/robert-thompson-electric",
+        "post_url": "https://www.linkedin.com/posts/jobber_electrician-tips",
+        "engagement_type": "comment",
+        "comment_text": "Great advice for our team up north!",
+        "job_title": "Owner",
+        "company": "Thompson Electric",
+        "location": "Toronto, ON, Canada",
+        "industry": "Electrical",
+        "monitor_name": "Jobber",
+        "timestamp": "2026-03-24T16:00:00Z"
+      },
+      "expected_result": "Should FAIL at location filter, logged to filtered_location sheet"
+    },
+    {
+      "scenario": "FAIL — Wrong industry (Software/SaaS)",
+      "payload": {
+        "person_name": "David Park",
+        "linkedin_url": "https://www.linkedin.com/in/david-park-saas",
+        "post_url": "https://www.linkedin.com/posts/servicetitan_tech-innovation",
+        "engagement_type": "like",
+        "comment_text": null,
+        "job_title": "CEO",
+        "company": "CloudSync Software",
+        "location": "San Francisco, CA",
+        "industry": "Software",
+        "monitor_name": "ServiceTitan",
+        "timestamp": "2026-03-24T16:30:00Z"
+      },
+      "expected_result": "Should FAIL at industry filter, logged to filtered_industry sheet"
+    },
+    {
+      "scenario": "Edge case — Empty job title",
+      "payload": {
+        "person_name": "Alex Johnson",
+        "linkedin_url": "https://www.linkedin.com/in/alex-johnson",
+        "post_url": "https://www.linkedin.com/posts/jobber_tips",
+        "engagement_type": "like",
+        "comment_text": null,
+        "job_title": "",
+        "company": "Johnson Landscaping",
+        "location": "Austin, TX",
+        "industry": "Landscaping",
+        "monitor_name": "Jobber",
+        "timestamp": "2026-03-24T17:00:00Z"
+      },
+      "expected_result": "Should FAIL at job title filter (empty title), logged for manual review"
+    }
+  ],
+  "curl_command_template": "curl -X POST https://YOUR-N8N-INSTANCE.app.n8n.cloud/webhook-test/cornersight-inbound -H 'Content-Type: application/json' -H 'X-Webhook-Secret: YOUR-SECRET' -d '{PASTE_PAYLOAD_HERE}'"
+}
