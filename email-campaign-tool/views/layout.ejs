@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= typeof title !== 'undefined' ? title + ' | ' : '' %>Email Campaign Tool</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    [x-cloak] { display: none !important; }
+    .sidebar-link.active { background: rgba(59, 130, 246, 0.1); color: #3B82F6; border-right: 3px solid #3B82F6; }
+    .stat-card { transition: transform 0.15s; }
+    .stat-card:hover { transform: translateY(-2px); }
+  </style>
+</head>
+<body class="h-full bg-gray-50" x-data="{ sidebarOpen: true }">
+  <div class="flex h-full">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0" x-show="sidebarOpen" x-transition>
+      <div class="p-5 border-b border-gray-200">
+        <h1 class="text-xl font-bold text-gray-800"><i class="fas fa-paper-plane text-blue-500 mr-2"></i>Campaign Tool</h1>
+        <p class="text-xs text-gray-400 mt-1">Email Marketing Platform</p>
+      </div>
+      <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+        <a href="/" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'dashboard' ? 'active' : '' %>">
+          <i class="fas fa-chart-line w-5 text-center"></i> Dashboard
+        </a>
+        <a href="/campaigns" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'campaigns' ? 'active' : '' %>">
+          <i class="fas fa-bullhorn w-5 text-center"></i> Campaigns
+        </a>
+        <a href="/contacts" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'contacts' ? 'active' : '' %>">
+          <i class="fas fa-users w-5 text-center"></i> Contacts
+        </a>
+        <a href="/lists" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'lists' ? 'active' : '' %>">
+          <i class="fas fa-list w-5 text-center"></i> Lists
+        </a>
+        <a href="/templates" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'templates' ? 'active' : '' %>">
+          <i class="fas fa-file-code w-5 text-center"></i> Templates
+        </a>
+        <a href="/sequences" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'sequences' ? 'active' : '' %>">
+          <i class="fas fa-stream w-5 text-center"></i> Sequences
+        </a>
+        <div class="pt-3 mt-3 border-t border-gray-100">
+          <a href="/webhooks" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'webhooks' ? 'active' : '' %>">
+            <i class="fas fa-plug w-5 text-center"></i> Webhooks
+          </a>
+          <a href="/analytics" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'analytics' ? 'active' : '' %>">
+            <i class="fas fa-chart-bar w-5 text-center"></i> Analytics
+          </a>
+          <a href="/settings" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'settings' ? 'active' : '' %>">
+            <i class="fas fa-cog w-5 text-center"></i> Settings
+          </a>
+        </div>
+      </nav>
+      <div class="p-3 border-t border-gray-200">
+        <button onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>location.href='/login')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50">
+          <i class="fas fa-sign-out-alt w-5 text-center"></i> Logout
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-y-auto">
+      <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center gap-4">
+          <button @click="sidebarOpen = !sidebarOpen" class="text-gray-400 hover:text-gray-600">
+            <i class="fas fa-bars"></i>
+          </button>
+          <h2 class="text-lg font-semibold text-gray-800"><%= typeof title !== 'undefined' ? title : 'Dashboard' %></h2>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-gray-400" id="current-time"></span>
+        </div>
+      </header>
+      <div class="p-6">
+        <%- body %>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Update clock
+    function updateTime() {
+      const el = document.getElementById('current-time');
+      if (el) el.textContent = new Date().toLocaleString();
+    }
+    updateTime();
+    setInterval(updateTime, 1000);
+
+    // Global API helper
+    window.api = {
+      async fetch(url, options = {}) {
+        const res = await fetch(url, {
+          headers: { 'Content-Type': 'application/json', ...options.headers },
+          ...options,
+        });
+        if (res.status === 401) { location.href = '/login'; return; }
+        return res.json();
+      },
+      get: (url) => window.api.fetch(url),
+      post: (url, body) => window.api.fetch(url, { method: 'POST', body: JSON.stringify(body) }),
+      put: (url, body) => window.api.fetch(url, { method: 'PUT', body: JSON.stringify(body) }),
+      del: (url) => window.api.fetch(url, { method: 'DELETE' }),
+    };
+
+    // Toast notifications
+    window.toast = (message, type = 'success') => {
+      const div = document.createElement('div');
+      div.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium transition-all transform ${type === 'error' ? 'bg-red-500' : type === 'warning' ? 'bg-yellow-500' : 'bg-green-500'}`;
+      div.textContent = message;
+      document.body.appendChild(div);
+      setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 3000);
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+
+
+<div x-data="campaignDetail()" x-init="loadCampaign()">
+  <!-- Back link & actions -->
+  <div class="flex items-center justify-between mb-6">
+    <a href="/campaigns" class="text-sm text-gray-500 hover:text-gray-700"><i class="fas fa-arrow-left mr-1"></i> Back to Campaigns</a>
+    <div class="flex items-center gap-2">
+      <button x-show="campaign.status === 'draft'" @click="sendNow()" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600">
+        <i class="fas fa-paper-plane mr-1"></i> Send Now
+      </button>
+      <button x-show="campaign.status === 'draft'" @click="showSchedule = true" class="bg-purple-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-600">
+        <i class="fas fa-clock mr-1"></i> Schedule
+      </button>
+      <button x-show="campaign.status === 'sending'" @click="pause()" class="bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm">Pause</button>
+      <button x-show="campaign.status === 'paused'" @click="resume()" class="bg-green-500 text-white px-4 py-2 rounded-lg text-sm">Resume</button>
+    </div>
+  </div>
+
+  <!-- Campaign header -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+    <div class="flex items-start justify-between">
+      <div>
+        <h2 class="text-xl font-bold text-gray-800" x-text="campaign.name">Loading...</h2>
+        <p class="text-sm text-gray-500 mt-1" x-text="campaign.subject"></p>
+      </div>
+      <span class="text-sm px-3 py-1 rounded-full font-medium"
+        :class="{
+          'bg-gray-100 text-gray-600': campaign.status === 'draft',
+          'bg-yellow-100 text-yellow-700': campaign.status === 'scheduled',
+          'bg-blue-100 text-blue-700': campaign.status === 'sending',
+          'bg-green-100 text-green-700': campaign.status === 'sent',
+          'bg-orange-100 text-orange-700': campaign.status === 'paused',
+        }" x-text="campaign.status"></span>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+      <p class="text-2xl font-bold text-gray-800" x-text="campaign.total_recipients || 0"></p>
+      <p class="text-xs text-gray-500">Recipients</p>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+      <p class="text-2xl font-bold text-blue-600" x-text="campaign.total_sent || 0"></p>
+      <p class="text-xs text-gray-500">Sent</p>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+      <p class="text-2xl font-bold text-green-600" x-text="analytics.campaign?.open_rate + '%' || '0%'"></p>
+      <p class="text-xs text-gray-500">Open Rate</p>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+      <p class="text-2xl font-bold text-purple-600" x-text="analytics.campaign?.click_rate + '%' || '0%'"></p>
+      <p class="text-xs text-gray-500">Click Rate</p>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+      <p class="text-2xl font-bold text-red-500" x-text="campaign.total_bounces || 0"></p>
+      <p class="text-xs text-gray-500">Bounces</p>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+      <p class="text-2xl font-bold text-orange-500" x-text="campaign.total_unsubscribes || 0"></p>
+      <p class="text-xs text-gray-500">Unsubscribes</p>
+    </div>
+  </div>
+
+  <!-- Tabs: Activity, Top Links -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Top Links -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Top Clicked Links</h3>
+      <div class="space-y-2">
+        <template x-for="link in analytics.top_links || []" :key="link.url">
+          <div class="flex items-center justify-between p-2 rounded hover:bg-gray-50">
+            <a :href="link.url" target="_blank" class="text-sm text-blue-500 hover:underline truncate max-w-[300px]" x-text="link.url"></a>
+            <span class="text-xs text-gray-500" x-text="link.unique_clicks + ' clicks'"></span>
+          </div>
+        </template>
+        <p x-show="!analytics.top_links?.length" class="text-sm text-gray-400">No clicks yet</p>
+      </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Recent Activity</h3>
+      <div class="space-y-2 max-h-64 overflow-y-auto">
+        <template x-for="e in recentEvents" :key="e.id">
+          <div class="flex items-center gap-3 p-2 text-sm">
+            <span class="w-6 text-center"
+              :class="{ 'text-blue-500': e.type === 'send', 'text-green-500': e.type === 'open', 'text-purple-500': e.type === 'click', 'text-red-500': e.type === 'bounce', 'text-orange-500': e.type === 'unsubscribe' }">
+              <i :class="{ 'fas fa-paper-plane': e.type === 'send', 'fas fa-envelope-open': e.type === 'open', 'fas fa-mouse-pointer': e.type === 'click', 'fas fa-exclamation-triangle': e.type === 'bounce', 'fas fa-user-minus': e.type === 'unsubscribe' }"></i>
+            </span>
+            <div class="flex-1">
+              <span class="text-gray-800" x-text="(e.first_name || '') + ' ' + (e.last_name || e.email || '')"></span>
+              <span class="text-gray-400" x-text="e.type"></span>
+            </div>
+            <span class="text-xs text-gray-400" x-text="new Date(e.created_at).toLocaleString()"></span>
+          </div>
+        </template>
+        <p x-show="recentEvents.length === 0" class="text-sm text-gray-400">No activity yet</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule Modal -->
+  <div x-show="showSchedule" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showSchedule = false">
+    <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+      <h3 class="text-lg font-semibold mb-4">Schedule Campaign</h3>
+      <input type="datetime-local" x-model="scheduleDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4" />
+      <div class="flex justify-end gap-3">
+        <button @click="showSchedule = false" class="px-4 py-2 text-sm text-gray-600">Cancel</button>
+        <button @click="schedule()" class="bg-purple-500 text-white px-6 py-2 rounded-lg text-sm">Schedule</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function campaignDetail() {
+  const campaignId = window.location.pathname.split('/').pop();
+  return {
+    campaign: {},
+    analytics: {},
+    recentEvents: [],
+    showSchedule: false,
+    scheduleDate: '',
+
+    async loadCampaign() {
+      const data = await api.get(`/api/campaigns/${campaignId}`);
+      this.campaign = data.campaign;
+      this.recentEvents = data.recent_events || [];
+
+      const aData = await api.get(`/api/campaigns/${campaignId}/analytics`);
+      this.analytics = aData;
+    },
+
+    async sendNow() {
+      if (!confirm('Send this campaign now?')) return;
+      const data = await api.post(`/api/campaigns/${campaignId}/send`);
+      toast(data.message || 'Sending');
+      setTimeout(() => this.loadCampaign(), 2000);
+    },
+
+    async schedule() {
+      if (!this.scheduleDate) return;
+      await api.post(`/api/campaigns/${campaignId}/schedule`, { scheduled_at: new Date(this.scheduleDate).toISOString() });
+      this.showSchedule = false;
+      toast('Campaign scheduled');
+      this.loadCampaign();
+    },
+
+    async pause() { await api.post(`/api/campaigns/${campaignId}/pause`); toast('Paused'); this.loadCampaign(); },
+    async resume() { await api.post(`/api/campaigns/${campaignId}/resume`); toast('Resumed'); this.loadCampaign(); },
+  };
+}
+</script>

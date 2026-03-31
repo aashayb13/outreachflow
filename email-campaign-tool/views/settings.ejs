@@ -1,0 +1,100 @@
+
+
+<div x-data="settingsApp()" x-init="load()">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- SMTP Settings -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <h3 class="font-semibold text-gray-700 mb-4"><i class="fas fa-server text-gray-400 mr-2"></i>SMTP Configuration</h3>
+      <div class="space-y-3 text-sm">
+        <div class="flex justify-between"><span class="text-gray-500">Host</span><span class="text-gray-800 font-mono"><%= typeof smtp_host !== 'undefined' ? smtp_host : 'Not configured' %></span></div>
+        <div class="flex justify-between"><span class="text-gray-500">Port</span><span class="text-gray-800"><%= typeof smtp_port !== 'undefined' ? smtp_port : '-' %></span></div>
+        <div class="flex justify-between"><span class="text-gray-500">User</span><span class="text-gray-800"><%= typeof smtp_user !== 'undefined' ? smtp_user : '-' %></span></div>
+        <div class="flex justify-between"><span class="text-gray-500">From</span><span class="text-gray-800"><%= typeof smtp_from !== 'undefined' ? smtp_from : '-' %></span></div>
+      </div>
+      <button @click="verifySMTP()" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600">
+        <i class="fas fa-plug mr-1"></i> Test Connection
+      </button>
+      <p x-show="smtpStatus" class="mt-2 text-sm" :class="smtpOk ? 'text-green-600' : 'text-red-600'" x-text="smtpStatus"></p>
+      <p class="text-xs text-gray-400 mt-3">Edit .env file to change SMTP settings, then restart the server.</p>
+    </div>
+
+    <!-- API Keys -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <h3 class="font-semibold text-gray-700 mb-4"><i class="fas fa-key text-gray-400 mr-2"></i>API Keys</h3>
+      <div class="space-y-3 mb-4">
+        <template x-for="k in apiKeys" :key="k.id">
+          <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div>
+              <p class="text-sm font-medium text-gray-800" x-text="k.name"></p>
+              <p class="text-xs text-gray-400" x-text="'Prefix: ' + k.prefix + '... | Permissions: ' + k.permissions.join(', ')"></p>
+            </div>
+            <button @click="deleteKey(k.id)" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button>
+          </div>
+        </template>
+        <p x-show="apiKeys.length === 0" class="text-sm text-gray-400">No API keys created</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="text" x-model="newKeyName" placeholder="Key name" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+        <button @click="createKey()" class="bg-green-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-600">Generate</button>
+      </div>
+      <div x-show="newKey" class="mt-3 p-3 bg-green-50 rounded-lg">
+        <p class="text-xs text-green-700 font-medium mb-1">Save this key now — it won't be shown again:</p>
+        <code class="text-sm text-green-800 break-all" x-text="newKey"></code>
+      </div>
+    </div>
+
+    <!-- Suppression List -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <h3 class="font-semibold text-gray-700 mb-4"><i class="fas fa-ban text-gray-400 mr-2"></i>Suppression List</h3>
+      <p class="text-sm text-gray-500 mb-3" x-text="suppressionCount + ' suppressed emails'"></p>
+      <a href="/analytics" class="text-sm text-blue-500 hover:underline">Manage in Analytics</a>
+    </div>
+
+    <!-- System Info -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <h3 class="font-semibold text-gray-700 mb-4"><i class="fas fa-info-circle text-gray-400 mr-2"></i>System</h3>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between"><span class="text-gray-500">Send Rate</span><span class="text-gray-800"><%= typeof send_rate !== 'undefined' ? send_rate : '-' %>/sec, <%= typeof send_daily !== 'undefined' ? send_daily : '-' %>/day</span></div>
+        <div class="flex justify-between"><span class="text-gray-500">Tracking Domain</span><span class="text-gray-800 font-mono"><%= typeof tracking_domain !== 'undefined' ? tracking_domain : '-' %></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function settingsApp() {
+  return {
+    apiKeys: [], newKeyName: '', newKey: '', smtpStatus: '', smtpOk: false, suppressionCount: 0,
+
+    async load() {
+      const kData = await api.get('/api/auth/api-keys');
+      this.apiKeys = kData.api_keys;
+
+      const sData = await api.get('/api/analytics/suppression?limit=1');
+      this.suppressionCount = sData.pagination.total;
+    },
+
+    async verifySMTP() {
+      this.smtpStatus = 'Testing...';
+      const data = await api.post('/api/auth/verify-smtp');
+      this.smtpOk = data.success;
+      this.smtpStatus = data.success ? 'Connection successful!' : 'Failed: ' + (data.error || 'Unknown error');
+    },
+
+    async createKey() {
+      if (!this.newKeyName) return;
+      const data = await api.post('/api/auth/api-keys', { name: this.newKeyName, permissions: ['read', 'write'] });
+      this.newKey = data.api_key;
+      this.newKeyName = '';
+      this.load();
+    },
+
+    async deleteKey(id) {
+      if (!confirm('Delete this API key?')) return;
+      await api.del(`/api/auth/api-keys/${id}`);
+      toast('Key deleted');
+      this.load();
+    },
+  };
+}
+</script>

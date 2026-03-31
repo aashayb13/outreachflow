@@ -1,0 +1,211 @@
+
+
+<div x-data="campaignsApp()" x-init="loadCampaigns()">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <select x-model="filter" @change="loadCampaigns()" class="text-sm border border-gray-300 rounded-lg px-3 py-2">
+        <option value="">All Statuses</option>
+        <option value="draft">Draft</option>
+        <option value="scheduled">Scheduled</option>
+        <option value="sending">Sending</option>
+        <option value="sent">Sent</option>
+        <option value="paused">Paused</option>
+      </select>
+      <input type="text" x-model="search" @input.debounce.300ms="loadCampaigns()" placeholder="Search campaigns..." class="text-sm border border-gray-300 rounded-lg px-3 py-2 w-64" />
+    </div>
+    <button @click="showCreate = true" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition">
+      <i class="fas fa-plus mr-1"></i> New Campaign
+    </button>
+  </div>
+
+  <!-- Campaign List -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Campaign</th>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+          <th class="text-center px-5 py-3 text-xs font-medium text-gray-500 uppercase">Sent</th>
+          <th class="text-center px-5 py-3 text-xs font-medium text-gray-500 uppercase">Open Rate</th>
+          <th class="text-center px-5 py-3 text-xs font-medium text-gray-500 uppercase">Click Rate</th>
+          <th class="text-right px-5 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <template x-for="c in campaigns" :key="c.id">
+          <tr class="hover:bg-gray-50 transition">
+            <td class="px-5 py-4">
+              <a :href="'/campaigns/' + c.id" class="font-medium text-gray-800 hover:text-blue-500" x-text="c.name"></a>
+              <p class="text-xs text-gray-400 mt-0.5" x-text="c.subject"></p>
+            </td>
+            <td class="px-5 py-4">
+              <span class="text-xs px-2 py-1 rounded-full"
+                :class="{
+                  'bg-gray-100 text-gray-600': c.status === 'draft',
+                  'bg-yellow-100 text-yellow-700': c.status === 'scheduled',
+                  'bg-blue-100 text-blue-700': c.status === 'sending',
+                  'bg-green-100 text-green-700': c.status === 'sent',
+                  'bg-orange-100 text-orange-700': c.status === 'paused',
+                  'bg-red-100 text-red-700': c.status === 'cancelled',
+                }" x-text="c.status"></span>
+            </td>
+            <td class="px-5 py-4 text-center text-gray-600" x-text="c.total_sent.toLocaleString()"></td>
+            <td class="px-5 py-4 text-center text-gray-600" x-text="c.open_rate + '%'"></td>
+            <td class="px-5 py-4 text-center text-gray-600" x-text="c.click_rate + '%'"></td>
+            <td class="px-5 py-4 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <button x-show="c.status === 'draft'" @click="sendCampaign(c.id)" class="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">Send</button>
+                <button x-show="c.status === 'sending'" @click="pauseCampaign(c.id)" class="text-xs bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600">Pause</button>
+                <button x-show="c.status === 'paused'" @click="resumeCampaign(c.id)" class="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">Resume</button>
+                <button @click="duplicateCampaign(c.id)" class="text-gray-400 hover:text-gray-600" title="Duplicate"><i class="fas fa-copy"></i></button>
+                <button x-show="c.status === 'draft'" @click="deleteCampaign(c.id)" class="text-gray-400 hover:text-red-500" title="Delete"><i class="fas fa-trash"></i></button>
+              </div>
+            </td>
+          </tr>
+        </template>
+        <tr x-show="campaigns.length === 0">
+          <td colspan="6" class="px-5 py-8 text-center text-gray-400">No campaigns found</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <div class="flex items-center justify-between mt-4" x-show="pagination.pages > 1">
+    <p class="text-sm text-gray-500">Showing page <span x-text="pagination.page"></span> of <span x-text="pagination.pages"></span></p>
+    <div class="flex gap-2">
+      <button @click="page--; loadCampaigns()" :disabled="page <= 1" class="px-3 py-1 text-sm border rounded disabled:opacity-50">Prev</button>
+      <button @click="page++; loadCampaigns()" :disabled="page >= pagination.pages" class="px-3 py-1 text-sm border rounded disabled:opacity-50">Next</button>
+    </div>
+  </div>
+
+  <!-- Create Campaign Modal -->
+  <div x-show="showCreate" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showCreate = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto p-6">
+      <h3 class="text-lg font-semibold mb-4">Create Campaign</h3>
+      <form @submit.prevent="createCampaign()">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Campaign Name</label>
+            <input type="text" x-model="form.name" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Subject Line</label>
+            <input type="text" x-model="form.subject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Use {{first_name}} for personalization" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">From Name</label>
+            <input type="text" x-model="form.from_name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Reply To</label>
+            <input type="email" x-model="form.reply_to" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Template</label>
+            <select x-model="form.template_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">None (custom HTML)</option>
+              <template x-for="t in templates" :key="t.id">
+                <option :value="t.id" x-text="t.name"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Target List</label>
+            <select x-model="form.list_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">Select a list</option>
+              <template x-for="l in lists" :key="l.id">
+                <option :value="l.id" x-text="l.name + ' (' + l.contact_count + ')'"></option>
+              </template>
+            </select>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">HTML Content (if no template)</label>
+            <textarea x-model="form.html_content" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono" placeholder="<html>...</html>"></textarea>
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 mt-6">
+          <button type="button" @click="showCreate = false" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+          <button type="submit" class="bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">Create Campaign</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function campaignsApp() {
+  return {
+    campaigns: [],
+    pagination: {},
+    page: 1,
+    filter: '',
+    search: '',
+    showCreate: false,
+    templates: [],
+    lists: [],
+    form: { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', html_content: '' },
+
+    async loadCampaigns() {
+      const params = new URLSearchParams({ page: this.page, status: this.filter, search: this.search });
+      const data = await api.get('/api/campaigns?' + params);
+      this.campaigns = data.campaigns;
+      this.pagination = data.pagination;
+
+      // Load templates and lists for the create form
+      if (this.templates.length === 0) {
+        const tData = await api.get('/api/templates');
+        this.templates = tData.templates;
+        const lData = await api.get('/api/lists');
+        this.lists = lData.lists;
+      }
+    },
+
+    async createCampaign() {
+      const payload = { ...this.form };
+      if (payload.list_id) payload.list_ids = [parseInt(payload.list_id)];
+      if (payload.template_id) payload.template_id = parseInt(payload.template_id);
+      delete payload.list_id;
+
+      await api.post('/api/campaigns', payload);
+      this.showCreate = false;
+      this.form = { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', html_content: '' };
+      toast('Campaign created');
+      this.loadCampaigns();
+    },
+
+    async sendCampaign(id) {
+      if (!confirm('Send this campaign now?')) return;
+      const data = await api.post(`/api/campaigns/${id}/send`);
+      toast(data.message || 'Sending started');
+      this.loadCampaigns();
+    },
+
+    async pauseCampaign(id) {
+      await api.post(`/api/campaigns/${id}/pause`);
+      toast('Campaign paused');
+      this.loadCampaigns();
+    },
+
+    async resumeCampaign(id) {
+      await api.post(`/api/campaigns/${id}/resume`);
+      toast('Campaign resumed');
+      this.loadCampaigns();
+    },
+
+    async duplicateCampaign(id) {
+      await api.post(`/api/campaigns/${id}/duplicate`);
+      toast('Campaign duplicated');
+      this.loadCampaigns();
+    },
+
+    async deleteCampaign(id) {
+      if (!confirm('Delete this campaign?')) return;
+      await api.del(`/api/campaigns/${id}`);
+      toast('Campaign deleted');
+      this.loadCampaigns();
+    },
+  };
+}
+</script>

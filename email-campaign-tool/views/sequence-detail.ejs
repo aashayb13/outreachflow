@@ -1,0 +1,122 @@
+
+
+<div x-data="seqDetail()" x-init="load()">
+  <a href="/sequences" class="text-sm text-gray-500 hover:text-gray-700 mb-4 inline-block"><i class="fas fa-arrow-left mr-1"></i> Back</a>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-xl font-bold text-gray-800" x-text="seq.name"></h2>
+        <p class="text-sm text-gray-500 mt-1" x-text="seq.description || ''"></p>
+      </div>
+      <span class="text-sm px-3 py-1 rounded-full font-medium"
+        :class="{ 'bg-green-100 text-green-700': seq.status === 'active', 'bg-gray-100 text-gray-600': seq.status === 'draft' }"
+        x-text="seq.status"></span>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-5 gap-4 mb-6">
+    <div class="bg-white rounded-xl p-4 shadow-sm text-center"><p class="text-xl font-bold" x-text="stats.total_enrolled || 0"></p><p class="text-xs text-gray-500">Enrolled</p></div>
+    <div class="bg-white rounded-xl p-4 shadow-sm text-center"><p class="text-xl font-bold text-blue-600" x-text="stats.active || 0"></p><p class="text-xs text-gray-500">Active</p></div>
+    <div class="bg-white rounded-xl p-4 shadow-sm text-center"><p class="text-xl font-bold text-green-600" x-text="stats.total_completed || 0"></p><p class="text-xs text-gray-500">Completed</p></div>
+    <div class="bg-white rounded-xl p-4 shadow-sm text-center"><p class="text-xl font-bold text-yellow-600" x-text="stats.paused || 0"></p><p class="text-xs text-gray-500">Paused</p></div>
+    <div class="bg-white rounded-xl p-4 shadow-sm text-center"><p class="text-xl font-bold text-red-500" x-text="stats.exited || 0"></p><p class="text-xs text-gray-500">Exited</p></div>
+  </div>
+
+  <!-- Steps Editor -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-semibold text-gray-700">Sequence Steps</h3>
+      <div class="flex gap-2">
+        <button @click="addStep('email')" class="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"><i class="fas fa-envelope mr-1"></i> Email</button>
+        <button @click="addStep('delay')" class="text-xs bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"><i class="fas fa-clock mr-1"></i> Delay</button>
+        <button @click="addStep('webhook')" class="text-xs bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600"><i class="fas fa-plug mr-1"></i> Webhook</button>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <template x-for="(step, idx) in steps" :key="idx">
+        <div class="border rounded-lg p-4"
+          :class="{ 'border-blue-200 bg-blue-50/50': step.type === 'email', 'border-yellow-200 bg-yellow-50/50': step.type === 'delay', 'border-purple-200 bg-purple-50/50': step.type === 'webhook' }">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-medium" x-text="'Step ' + (idx + 1) + ' — ' + step.type.charAt(0).toUpperCase() + step.type.slice(1)"></span>
+            <button @click="steps.splice(idx, 1)" class="text-red-400 hover:text-red-600 text-xs"><i class="fas fa-times"></i></button>
+          </div>
+          <!-- Email step -->
+          <div x-show="step.type === 'email'" class="space-y-2">
+            <input type="text" x-model="step.subject" placeholder="Subject line" class="w-full border rounded px-3 py-1.5 text-sm" />
+            <textarea x-model="step.html_content" placeholder="HTML content" rows="3" class="w-full border rounded px-3 py-1.5 text-sm font-mono"></textarea>
+          </div>
+          <!-- Delay step -->
+          <div x-show="step.type === 'delay'" class="flex items-center gap-3">
+            <input type="number" x-model.number="step.delay_amount" min="1" class="w-20 border rounded px-3 py-1.5 text-sm" />
+            <select x-model="step.delay_unit" class="border rounded px-3 py-1.5 text-sm">
+              <option value="minutes">Minutes</option><option value="hours">Hours</option><option value="days">Days</option><option value="weeks">Weeks</option>
+            </select>
+          </div>
+          <!-- Webhook step -->
+          <div x-show="step.type === 'webhook'" class="space-y-2">
+            <input type="url" x-model="step.webhook_url" placeholder="Webhook URL" class="w-full border rounded px-3 py-1.5 text-sm" />
+            <textarea x-model="step.webhook_body" placeholder='{"contact_id": "{{contact_id}}"}' rows="2" class="w-full border rounded px-3 py-1.5 text-sm font-mono"></textarea>
+          </div>
+        </div>
+      </template>
+      <p x-show="steps.length === 0" class="text-sm text-gray-400 text-center py-4">No steps yet. Add email, delay, or webhook steps above.</p>
+    </div>
+
+    <div class="flex justify-end mt-4">
+      <button @click="saveSteps()" class="bg-green-500 text-white px-6 py-2 rounded-lg text-sm hover:bg-green-600">Save Steps</button>
+    </div>
+  </div>
+
+  <!-- Enrollments -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+    <h3 class="font-semibold text-gray-700 mb-4">Enrollments</h3>
+    <div class="space-y-2">
+      <template x-for="e in enrollments" :key="e.id">
+        <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
+          <div>
+            <span class="text-sm font-medium" x-text="(e.first_name || '') + ' ' + (e.last_name || '') + ' (' + e.email + ')'"></span>
+            <span class="text-xs ml-2 text-gray-400" x-text="'Step ' + (e.current_step + 1)"></span>
+          </div>
+          <span class="text-xs px-2 py-1 rounded-full"
+            :class="{ 'bg-blue-100 text-blue-700': e.status === 'active', 'bg-green-100 text-green-700': e.status === 'completed', 'bg-red-100 text-red-700': e.status === 'exited' }"
+            x-text="e.status"></span>
+        </div>
+      </template>
+      <p x-show="enrollments.length === 0" class="text-sm text-gray-400 text-center py-4">No enrollments yet</p>
+    </div>
+  </div>
+</div>
+
+<script>
+function seqDetail() {
+  const seqId = window.location.pathname.split('/').pop();
+  return {
+    seq: {}, steps: [], enrollments: [], stats: {},
+
+    async load() {
+      const data = await api.get(`/api/sequences/${seqId}`);
+      this.seq = data.sequence;
+      this.steps = data.steps.map(s => ({ ...s, condition_rules: undefined, webhook_headers: undefined }));
+      this.enrollments = data.enrollments;
+      this.stats = data.stats;
+    },
+
+    addStep(type) {
+      const step = { type };
+      if (type === 'email') Object.assign(step, { subject: '', html_content: '', text_content: '' });
+      if (type === 'delay') Object.assign(step, { delay_amount: 1, delay_unit: 'days' });
+      if (type === 'webhook') Object.assign(step, { webhook_url: '', webhook_method: 'POST', webhook_body: '' });
+      this.steps.push(step);
+    },
+
+    async saveSteps() {
+      await api.put(`/api/sequences/${seqId}/steps`, { steps: this.steps });
+      toast('Steps saved');
+      this.load();
+    },
+  };
+}
+</script>

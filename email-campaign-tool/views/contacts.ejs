@@ -1,0 +1,209 @@
+
+
+<div x-data="contactsApp()" x-init="load()">
+  <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <input type="text" x-model="search" @input.debounce.300ms="load()" placeholder="Search contacts..." class="text-sm border border-gray-300 rounded-lg px-3 py-2 w-64" />
+      <select x-model="statusFilter" @change="load()" class="text-sm border border-gray-300 rounded-lg px-3 py-2">
+        <option value="">All Statuses</option>
+        <option value="active">Active</option>
+        <option value="unsubscribed">Unsubscribed</option>
+        <option value="bounced">Bounced</option>
+      </select>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="showImport = true" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-200">
+        <i class="fas fa-file-import mr-1"></i> Import CSV
+      </button>
+      <a href="/api/contacts/export/csv" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-200">
+        <i class="fas fa-download mr-1"></i> Export
+      </a>
+      <button @click="showCreate = true" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
+        <i class="fas fa-plus mr-1"></i> Add Contact
+      </button>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Contact</th>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Company</th>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Tags</th>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+          <th class="text-center px-5 py-3 text-xs font-medium text-gray-500 uppercase">Score</th>
+          <th class="text-right px-5 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <template x-for="c in contacts" :key="c.id">
+          <tr class="hover:bg-gray-50">
+            <td class="px-5 py-3">
+              <p class="font-medium text-gray-800" x-text="(c.first_name + ' ' + c.last_name).trim() || c.email"></p>
+              <p class="text-xs text-gray-400" x-text="c.email"></p>
+            </td>
+            <td class="px-5 py-3 text-gray-600" x-text="c.company || '-'"></td>
+            <td class="px-5 py-3">
+              <div class="flex flex-wrap gap-1">
+                <template x-for="tag in c.tags || []" :key="tag.name">
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600" x-text="tag.name"></span>
+                </template>
+              </div>
+            </td>
+            <td class="px-5 py-3">
+              <span class="text-xs px-2 py-1 rounded-full"
+                :class="{ 'bg-green-100 text-green-700': c.status === 'active', 'bg-red-100 text-red-700': c.status === 'unsubscribed' || c.status === 'bounced', 'bg-gray-100 text-gray-600': c.status === 'suppressed' }"
+                x-text="c.status"></span>
+            </td>
+            <td class="px-5 py-3 text-center text-gray-600" x-text="c.lead_score"></td>
+            <td class="px-5 py-3 text-right">
+              <button @click="editContact(c)" class="text-gray-400 hover:text-blue-500" title="Edit"><i class="fas fa-edit"></i></button>
+              <button @click="deleteContact(c.id)" class="text-gray-400 hover:text-red-500 ml-2" title="Delete"><i class="fas fa-trash"></i></button>
+            </td>
+          </tr>
+        </template>
+        <tr x-show="contacts.length === 0">
+          <td colspan="6" class="px-5 py-8 text-center text-gray-400">No contacts found</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="flex items-center justify-between mt-4" x-show="pagination.pages > 1">
+    <p class="text-sm text-gray-500">Page <span x-text="pagination.page"></span> of <span x-text="pagination.pages"></span> (<span x-text="pagination.total"></span> total)</p>
+    <div class="flex gap-2">
+      <button @click="page--; load()" :disabled="page <= 1" class="px-3 py-1 text-sm border rounded disabled:opacity-50">Prev</button>
+      <button @click="page++; load()" :disabled="page >= pagination.pages" class="px-3 py-1 text-sm border rounded disabled:opacity-50">Next</button>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div x-show="showCreate" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showCreate = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
+      <h3 class="text-lg font-semibold mb-4" x-text="editingId ? 'Edit Contact' : 'Add Contact'"></h3>
+      <form @submit.prevent="saveContact()">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="col-span-2"><input type="email" x-model="form.email" required placeholder="Email" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><input type="text" x-model="form.first_name" placeholder="First Name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><input type="text" x-model="form.last_name" placeholder="Last Name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><input type="text" x-model="form.company" placeholder="Company" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><input type="text" x-model="form.title" placeholder="Title" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><input type="text" x-model="form.phone" placeholder="Phone" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div>
+            <select x-model="form.list_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">No list</option>
+              <template x-for="l in lists" :key="l.id"><option :value="l.id" x-text="l.name"></option></template>
+            </select>
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button type="button" @click="showCreate = false; editingId = null" class="px-4 py-2 text-sm text-gray-600">Cancel</button>
+          <button type="submit" class="bg-blue-500 text-white px-6 py-2 rounded-lg text-sm" x-text="editingId ? 'Update' : 'Add Contact'"></button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Import Modal -->
+  <div x-show="showImport" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showImport = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <h3 class="text-lg font-semibold mb-4">Import Contacts from CSV</h3>
+      <form id="importForm" enctype="multipart/form-data">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">CSV File</label>
+            <input type="file" name="file" accept=".csv" required class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Add to List</label>
+            <select name="list_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">None</option>
+              <template x-for="l in lists" :key="l.id"><option :value="l.id" x-text="l.name"></option></template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Tags (comma-separated)</label>
+            <input type="text" name="tags" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="lead, cold-outreach" />
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button type="button" @click="showImport = false" class="px-4 py-2 text-sm text-gray-600">Cancel</button>
+          <button type="submit" class="bg-green-500 text-white px-6 py-2 rounded-lg text-sm">Import</button>
+        </div>
+      </form>
+      <div id="importResult" class="hidden mt-4 p-3 bg-green-50 rounded-lg text-sm text-green-700"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function contactsApp() {
+  return {
+    contacts: [], pagination: {}, page: 1, search: '', statusFilter: '',
+    showCreate: false, showImport: false, editingId: null, lists: [],
+    form: { email: '', first_name: '', last_name: '', company: '', title: '', phone: '', list_id: '' },
+
+    async load() {
+      const params = new URLSearchParams({ page: this.page, search: this.search, status: this.statusFilter });
+      const data = await api.get('/api/contacts?' + params);
+      this.contacts = data.contacts;
+      this.pagination = data.pagination;
+
+      if (this.lists.length === 0) {
+        const lData = await api.get('/api/lists');
+        this.lists = lData.lists;
+      }
+    },
+
+    editContact(c) {
+      this.editingId = c.id;
+      this.form = { email: c.email, first_name: c.first_name, last_name: c.last_name, company: c.company, title: c.title, phone: c.phone, list_id: '' };
+      this.showCreate = true;
+    },
+
+    async saveContact() {
+      if (this.editingId) {
+        await api.put(`/api/contacts/${this.editingId}`, this.form);
+        toast('Contact updated');
+      } else {
+        const payload = { ...this.form };
+        if (payload.list_id) { payload.list_ids = [parseInt(payload.list_id)]; }
+        delete payload.list_id;
+        await api.post('/api/contacts', payload);
+        toast('Contact added');
+      }
+      this.showCreate = false;
+      this.editingId = null;
+      this.form = { email: '', first_name: '', last_name: '', company: '', title: '', phone: '', list_id: '' };
+      this.load();
+    },
+
+    async deleteContact(id) {
+      if (!confirm('Delete this contact?')) return;
+      await api.del(`/api/contacts/${id}`);
+      toast('Contact deleted');
+      this.load();
+    },
+
+    init() {
+      // CSV import form handler
+      setTimeout(() => {
+        const form = document.getElementById('importForm');
+        if (form) {
+          form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const res = await fetch('/api/contacts/import', { method: 'POST', body: formData });
+            const data = await res.json();
+            const resultEl = document.getElementById('importResult');
+            resultEl.textContent = `Imported: ${data.imported}, Skipped: ${data.skipped}, Total: ${data.total}`;
+            resultEl.classList.remove('hidden');
+            this.load();
+          });
+        }
+      }, 100);
+    }
+  };
+}
+</script>

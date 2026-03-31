@@ -1,0 +1,169 @@
+
+
+<!-- Stat Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8" x-data="dashboardData()" x-init="loadData()">
+  <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Contacts</p>
+        <p class="text-2xl font-bold text-gray-800 mt-1" x-text="stats.total_contacts">-</p>
+      </div>
+      <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+        <i class="fas fa-users text-blue-500"></i>
+      </div>
+    </div>
+  </div>
+  <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Campaigns</p>
+        <p class="text-2xl font-bold text-gray-800 mt-1" x-text="stats.total_campaigns">-</p>
+      </div>
+      <div class="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
+        <i class="fas fa-bullhorn text-purple-500"></i>
+      </div>
+    </div>
+  </div>
+  <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Emails Sent</p>
+        <p class="text-2xl font-bold text-gray-800 mt-1" x-text="formatNumber(stats.total_sent)">-</p>
+      </div>
+      <div class="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
+        <i class="fas fa-paper-plane text-green-500"></i>
+      </div>
+    </div>
+  </div>
+  <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg Open Rate</p>
+        <p class="text-2xl font-bold text-gray-800 mt-1" x-text="stats.avg_open_rate + '%'">-</p>
+      </div>
+      <div class="w-10 h-10 bg-yellow-50 rounded-lg flex items-center justify-center">
+        <i class="fas fa-envelope-open text-yellow-500"></i>
+      </div>
+    </div>
+  </div>
+  <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg Click Rate</p>
+        <p class="text-2xl font-bold text-gray-800 mt-1" x-text="stats.avg_click_rate + '%'">-</p>
+      </div>
+      <div class="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center">
+        <i class="fas fa-mouse-pointer text-indigo-500"></i>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">Contact Growth (30 days)</h3>
+    <canvas id="contactGrowthChart" height="200"></canvas>
+  </div>
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">Send Volume (30 days)</h3>
+    <canvas id="sendVolumeChart" height="200"></canvas>
+  </div>
+</div>
+
+<!-- Recent Campaigns & Active Sequences -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-semibold text-gray-700">Recent Campaigns</h3>
+      <a href="/campaigns" class="text-xs text-blue-500 hover:underline">View all</a>
+    </div>
+    <div id="recentCampaigns" class="space-y-3">
+      <p class="text-sm text-gray-400">Loading...</p>
+    </div>
+  </div>
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-semibold text-gray-700">Top Performing</h3>
+    </div>
+    <div id="topCampaigns" class="space-y-3">
+      <p class="text-sm text-gray-400">Loading...</p>
+    </div>
+  </div>
+</div>
+
+<script>
+function dashboardData() {
+  return {
+    stats: { total_contacts: 0, total_campaigns: 0, total_sent: 0, avg_open_rate: 0, avg_click_rate: 0 },
+    formatNumber(n) { return n ? n.toLocaleString() : '0'; },
+    async loadData() {
+      try {
+        const data = await api.get('/api/analytics/dashboard');
+        this.stats = data.overview;
+
+        // Recent campaigns
+        const rcEl = document.getElementById('recentCampaigns');
+        if (data.recent_campaigns.length === 0) {
+          rcEl.innerHTML = '<p class="text-sm text-gray-400">No campaigns yet</p>';
+        } else {
+          rcEl.innerHTML = data.recent_campaigns.map(c => `
+            <a href="/campaigns/${c.id}" class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition">
+              <div>
+                <p class="text-sm font-medium text-gray-800">${c.name}</p>
+                <p class="text-xs text-gray-400">${c.total_sent} sent</p>
+              </div>
+              <span class="text-xs px-2 py-1 rounded-full ${c.status === 'sent' ? 'bg-green-100 text-green-700' : c.status === 'sending' ? 'bg-blue-100 text-blue-700' : c.status === 'draft' ? 'bg-gray-100 text-gray-600' : 'bg-yellow-100 text-yellow-700'}">${c.status}</span>
+            </a>
+          `).join('');
+        }
+
+        // Top campaigns
+        const tcEl = document.getElementById('topCampaigns');
+        if (data.top_campaigns.length === 0) {
+          tcEl.innerHTML = '<p class="text-sm text-gray-400">Not enough data yet</p>';
+        } else {
+          tcEl.innerHTML = data.top_campaigns.map(c => `
+            <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
+              <p class="text-sm font-medium text-gray-800">${c.name}</p>
+              <div class="flex gap-3 text-xs">
+                <span class="text-green-600">${c.open_rate}% opens</span>
+                <span class="text-blue-600">${c.click_rate}% clicks</span>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        // Charts
+        if (data.contact_growth.length > 0) {
+          new Chart(document.getElementById('contactGrowthChart'), {
+            type: 'line',
+            data: {
+              labels: data.contact_growth.map(d => d.date),
+              datasets: [{ label: 'New Contacts', data: data.contact_growth.map(d => d.count), borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4 }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { beginAtZero: true } } }
+          });
+        }
+
+        if (data.send_volume.length > 0) {
+          new Chart(document.getElementById('sendVolumeChart'), {
+            type: 'bar',
+            data: {
+              labels: data.send_volume.map(d => d.date),
+              datasets: [
+                { label: 'Sends', data: data.send_volume.map(d => d.sends), backgroundColor: '#3B82F6' },
+                { label: 'Opens', data: data.send_volume.map(d => d.opens), backgroundColor: '#10B981' },
+                { label: 'Clicks', data: data.send_volume.map(d => d.clicks), backgroundColor: '#8B5CF6' },
+              ]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }, scales: { x: { display: false } } }
+          });
+        }
+      } catch (err) {
+        console.error('Dashboard load error:', err);
+      }
+    }
+  };
+}
+</script>

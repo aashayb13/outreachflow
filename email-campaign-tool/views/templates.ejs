@@ -1,0 +1,140 @@
+
+
+<div x-data="templatesApp()" x-init="load()">
+  <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <select x-model="categoryFilter" @change="load()" class="text-sm border border-gray-300 rounded-lg px-3 py-2">
+        <option value="">All Categories</option>
+        <option value="onboarding">Onboarding</option>
+        <option value="newsletter">Newsletter</option>
+        <option value="promotional">Promotional</option>
+        <option value="outreach">Outreach</option>
+        <option value="general">General</option>
+      </select>
+    </div>
+    <button @click="showCreate = true" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
+      <i class="fas fa-plus mr-1"></i> New Template
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <template x-for="t in templates" :key="t.id">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-gray-800" x-text="t.name"></h3>
+          <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600" x-text="t.category"></span>
+        </div>
+        <p class="text-sm text-gray-500 mb-3 truncate" x-text="t.subject"></p>
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-gray-400" x-text="new Date(t.updated_at).toLocaleDateString()"></span>
+          <div class="flex gap-2">
+            <button @click="previewTemplate(t.id)" class="text-gray-400 hover:text-green-500" title="Preview"><i class="fas fa-eye"></i></button>
+            <button @click="editTemplate(t)" class="text-gray-400 hover:text-blue-500" title="Edit"><i class="fas fa-edit"></i></button>
+            <button @click="duplicateTemplate(t.id)" class="text-gray-400 hover:text-purple-500" title="Duplicate"><i class="fas fa-copy"></i></button>
+            <button @click="deleteTemplate(t.id)" class="text-gray-400 hover:text-red-500" title="Delete"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div x-show="showCreate" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showCreate = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6">
+      <h3 class="text-lg font-semibold mb-4" x-text="editingId ? 'Edit Template' : 'New Template'"></h3>
+      <form @submit.prevent="saveTemplate()">
+        <div class="grid grid-cols-2 gap-4">
+          <div><input type="text" x-model="form.name" required placeholder="Template Name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div>
+            <select x-model="form.category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="general">General</option>
+              <option value="onboarding">Onboarding</option>
+              <option value="newsletter">Newsletter</option>
+              <option value="promotional">Promotional</option>
+              <option value="outreach">Outreach</option>
+            </select>
+          </div>
+          <div class="col-span-2"><input type="text" x-model="form.subject" placeholder="Subject Line (use {{first_name}} for variables)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">HTML Content</label>
+            <textarea x-model="form.html_content" rows="12" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"></textarea>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Plain Text Version</label>
+            <textarea x-model="form.text_content" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"></textarea>
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button type="button" @click="showCreate = false; editingId = null" class="px-4 py-2 text-sm text-gray-600">Cancel</button>
+          <button type="submit" class="bg-blue-500 text-white px-6 py-2 rounded-lg text-sm" x-text="editingId ? 'Update' : 'Create'"></button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Preview Modal -->
+  <div x-show="showPreview" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showPreview = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold">Template Preview</h3>
+        <button @click="showPreview = false" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="border rounded-lg p-4" x-html="previewHtml"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function templatesApp() {
+  return {
+    templates: [], showCreate: false, showPreview: false, editingId: null, categoryFilter: '', previewHtml: '',
+    form: { name: '', subject: '', html_content: '', text_content: '', category: 'general' },
+
+    async load() {
+      const params = new URLSearchParams({ category: this.categoryFilter });
+      const data = await api.get('/api/templates?' + params);
+      this.templates = data.templates;
+    },
+
+    async editTemplate(t) {
+      const data = await api.get(`/api/templates/${t.id}`);
+      this.editingId = t.id;
+      this.form = { name: data.template.name, subject: data.template.subject, html_content: data.template.html_content, text_content: data.template.text_content, category: data.template.category };
+      this.showCreate = true;
+    },
+
+    async saveTemplate() {
+      if (this.editingId) {
+        await api.put(`/api/templates/${this.editingId}`, this.form);
+        toast('Template updated');
+      } else {
+        await api.post('/api/templates', this.form);
+        toast('Template created');
+      }
+      this.showCreate = false;
+      this.editingId = null;
+      this.form = { name: '', subject: '', html_content: '', text_content: '', category: 'general' };
+      this.load();
+    },
+
+    async previewTemplate(id) {
+      const data = await api.post(`/api/templates/${id}/preview`, { variables: { first_name: 'John', last_name: 'Doe', company: 'Acme Corp', company_name: 'Your Company' } });
+      this.previewHtml = data.html;
+      this.showPreview = true;
+    },
+
+    async duplicateTemplate(id) {
+      await api.post(`/api/templates/${id}/duplicate`);
+      toast('Template duplicated');
+      this.load();
+    },
+
+    async deleteTemplate(id) {
+      if (!confirm('Delete this template?')) return;
+      await api.del(`/api/templates/${id}`);
+      toast('Template deleted');
+      this.load();
+    },
+  };
+}
+</script>

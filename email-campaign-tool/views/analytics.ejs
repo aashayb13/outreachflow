@@ -1,0 +1,80 @@
+
+
+<div x-data="analyticsApp()" x-init="load()">
+  <!-- Filters -->
+  <div class="flex items-center gap-4 mb-6">
+    <select x-model="eventType" @change="loadEvents()" class="text-sm border border-gray-300 rounded-lg px-3 py-2">
+      <option value="">All Events</option>
+      <option value="send">Sends</option>
+      <option value="open">Opens</option>
+      <option value="click">Clicks</option>
+      <option value="bounce">Bounces</option>
+      <option value="unsubscribe">Unsubscribes</option>
+      <option value="complaint">Complaints</option>
+    </select>
+    <input type="date" x-model="fromDate" @change="loadEvents()" class="text-sm border border-gray-300 rounded-lg px-3 py-2" />
+    <input type="date" x-model="toDate" @change="loadEvents()" class="text-sm border border-gray-300 rounded-lg px-3 py-2" />
+  </div>
+
+  <!-- Event feed -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Type</th>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Contact</th>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Campaign</th>
+          <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">URL</th>
+          <th class="text-right px-5 py-3 text-xs font-medium text-gray-500 uppercase">Time</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <template x-for="e in events" :key="e.id">
+          <tr class="hover:bg-gray-50">
+            <td class="px-5 py-3">
+              <span class="text-xs px-2 py-1 rounded-full font-medium"
+                :class="{
+                  'bg-blue-100 text-blue-700': e.type === 'send',
+                  'bg-green-100 text-green-700': e.type === 'open' || e.type === 'delivered',
+                  'bg-purple-100 text-purple-700': e.type === 'click',
+                  'bg-red-100 text-red-700': e.type === 'bounce' || e.type === 'complaint',
+                  'bg-orange-100 text-orange-700': e.type === 'unsubscribe',
+                }" x-text="e.type"></span>
+            </td>
+            <td class="px-5 py-3 text-gray-600" x-text="e.email || '-'"></td>
+            <td class="px-5 py-3 text-gray-600" x-text="e.campaign_name || '-'"></td>
+            <td class="px-5 py-3 text-gray-400 truncate max-w-[200px]" x-text="e.url || '-'"></td>
+            <td class="px-5 py-3 text-right text-gray-400 text-xs" x-text="new Date(e.created_at).toLocaleString()"></td>
+          </tr>
+        </template>
+        <tr x-show="events.length === 0"><td colspan="5" class="px-5 py-8 text-center text-gray-400">No events found</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="flex items-center justify-between mt-4" x-show="pagination.pages > 1">
+    <p class="text-sm text-gray-500">Page <span x-text="pagination.page"></span> of <span x-text="pagination.pages"></span></p>
+    <div class="flex gap-2">
+      <button @click="page--; loadEvents()" :disabled="page <= 1" class="px-3 py-1 text-sm border rounded disabled:opacity-50">Prev</button>
+      <button @click="page++; loadEvents()" :disabled="page >= pagination.pages" class="px-3 py-1 text-sm border rounded disabled:opacity-50">Next</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function analyticsApp() {
+  return {
+    events: [], pagination: {}, page: 1,
+    eventType: '', fromDate: '', toDate: '',
+
+    async load() { this.loadEvents(); },
+
+    async loadEvents() {
+      const params = new URLSearchParams({ page: this.page, type: this.eventType, from_date: this.fromDate, to_date: this.toDate });
+      const data = await api.get('/api/analytics/events?' + params);
+      this.events = data.events;
+      this.pagination = data.pagination;
+    },
+  };
+}
+</script>

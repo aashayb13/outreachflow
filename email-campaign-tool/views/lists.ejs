@@ -1,0 +1,87 @@
+
+
+<div x-data="listsApp()" x-init="load()">
+  <div class="flex items-center justify-between mb-6">
+    <p class="text-sm text-gray-500" x-text="lists.length + ' lists'"></p>
+    <button @click="showCreate = true" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
+      <i class="fas fa-plus mr-1"></i> New List
+    </button>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <template x-for="l in lists" :key="l.id">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-gray-800" x-text="l.name"></h3>
+          <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500" x-text="l.type"></span>
+        </div>
+        <p class="text-sm text-gray-500 mb-3" x-text="l.description || 'No description'"></p>
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-blue-600" x-text="l.contact_count + ' contacts'"></span>
+          <div class="flex gap-2">
+            <button @click="editList(l)" class="text-gray-400 hover:text-blue-500"><i class="fas fa-edit"></i></button>
+            <button @click="deleteList(l.id)" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div x-show="showCreate" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showCreate = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <h3 class="text-lg font-semibold mb-4" x-text="editingId ? 'Edit List' : 'New List'"></h3>
+      <form @submit.prevent="saveList()">
+        <div class="space-y-4">
+          <div><input type="text" x-model="form.name" required placeholder="List Name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><textarea x-model="form.description" placeholder="Description" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea></div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button type="button" @click="showCreate = false; editingId = null" class="px-4 py-2 text-sm text-gray-600">Cancel</button>
+          <button type="submit" class="bg-blue-500 text-white px-6 py-2 rounded-lg text-sm" x-text="editingId ? 'Update' : 'Create'"></button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function listsApp() {
+  return {
+    lists: [], showCreate: false, editingId: null,
+    form: { name: '', description: '' },
+
+    async load() {
+      const data = await api.get('/api/lists');
+      this.lists = data.lists;
+    },
+
+    editList(l) {
+      this.editingId = l.id;
+      this.form = { name: l.name, description: l.description };
+      this.showCreate = true;
+    },
+
+    async saveList() {
+      if (this.editingId) {
+        await api.put(`/api/lists/${this.editingId}`, this.form);
+        toast('List updated');
+      } else {
+        await api.post('/api/lists', this.form);
+        toast('List created');
+      }
+      this.showCreate = false;
+      this.editingId = null;
+      this.form = { name: '', description: '' };
+      this.load();
+    },
+
+    async deleteList(id) {
+      if (!confirm('Delete this list?')) return;
+      await api.del(`/api/lists/${id}`);
+      toast('List deleted');
+      this.load();
+    },
+  };
+}
+</script>
