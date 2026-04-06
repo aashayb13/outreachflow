@@ -70,10 +70,12 @@ function analyticsApp() {
     async load() { this.loadEvents(); },
 
     async loadEvents() {
-      const params = new URLSearchParams({ page: this.page, type: this.eventType, from_date: this.fromDate, to_date: this.toDate });
-      const data = await api.get('/api/analytics/events?' + params);
-      this.events = data.events;
-      this.pagination = data.pagination;
+      try {
+        const params = new URLSearchParams({ page: this.page, type: this.eventType, from_date: this.fromDate, to_date: this.toDate });
+        const data = await api.get('/api/analytics/events?' + params);
+        this.events = data.events;
+        this.pagination = { ...data.pagination, pages: Math.ceil(data.pagination.total / data.pagination.limit) };
+      } catch (e) { this.events = []; this.pagination = {}; }
     },
   };
 }

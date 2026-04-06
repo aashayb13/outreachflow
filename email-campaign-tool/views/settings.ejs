@@ -76,24 +76,30 @@ function settingsApp() {
 
     async verifySMTP() {
       this.smtpStatus = 'Testing...';
-      const data = await api.post('/api/auth/verify-smtp');
-      this.smtpOk = data.success;
-      this.smtpStatus = data.success ? 'Connection successful!' : 'Failed: ' + (data.error || 'Unknown error');
+      try {
+        const data = await api.post('/api/auth/verify-smtp');
+        this.smtpOk = data.success;
+        this.smtpStatus = data.success ? 'Connection successful!' : 'Failed: ' + (data.error || 'Unknown error');
+      } catch (e) {
+        this.smtpOk = false;
+        this.smtpStatus = 'Connection failed';
+      }
     },
 
     async createKey() {
-      if (!this.newKeyName) return;
-      const data = await api.post('/api/auth/api-keys', { name: this.newKeyName, permissions: ['read', 'write'] });
-      this.newKey = data.api_key;
-      this.newKeyName = '';
-      this.load();
+      if (!this.newKeyName) return toast('Enter a key name', 'warning');
+      try {
+        const data = await api.post('/api/auth/api-keys', { name: this.newKeyName, permissions: ['read', 'write'] });
+        this.newKey = data.api_key;
+        this.newKeyName = '';
+        toast('API key created');
+        this.load();
+      } catch (e) {}
     },
 
     async deleteKey(id) {
       if (!confirm('Delete this API key?')) return;
-      await api.del(`/api/auth/api-keys/${id}`);
-      toast('Key deleted');
-      this.load();
+      try { await api.del(`/api/auth/api-keys/${id}`); toast('Key deleted'); this.load(); } catch (e) {}
     },
   };
 }

@@ -36,7 +36,8 @@
             </div>
             <div class="flex gap-2">
               <button x-show="s.status === 'draft'" @click="activate(s.id)" class="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">Activate</button>
-              <button x-show="s.status === 'active'" @click="pause(s.id)" class="text-xs bg-yellow-500 text-white px-3 py-1 rounded">Pause</button>
+              <button x-show="s.status === 'active'" @click="pause(s.id)" class="text-xs bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600">Pause</button>
+              <button x-show="s.status === 'paused'" @click="activate(s.id)" class="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">Resume</button>
               <a :href="'/sequences/' + s.id" class="text-gray-400 hover:text-blue-500"><i class="fas fa-edit"></i></a>
               <button @click="deleteSeq(s.id)" class="text-gray-400 hover:text-red-500"><i class="fas fa-trash"></i></button>
             </div>
@@ -85,15 +86,17 @@ function sequencesApp() {
       this.sequences = data.sequences;
     },
     async createSeq() {
-      await api.post('/api/sequences', this.form);
-      this.showCreate = false;
-      this.form = { name: '', description: '', trigger_type: 'manual' };
-      toast('Sequence created');
-      this.load();
+      try {
+        await api.post('/api/sequences', this.form);
+        this.showCreate = false;
+        this.form = { name: '', description: '', trigger_type: 'manual' };
+        toast('Sequence created');
+        this.load();
+      } catch (e) {}
     },
-    async activate(id) { await api.put(`/api/sequences/${id}`, { status: 'active' }); toast('Activated'); this.load(); },
-    async pause(id) { await api.put(`/api/sequences/${id}`, { status: 'paused' }); toast('Paused'); this.load(); },
-    async deleteSeq(id) { if (!confirm('Delete?')) return; await api.del(`/api/sequences/${id}`); toast('Deleted'); this.load(); },
+    async activate(id) { try { await api.put(`/api/sequences/${id}`, { status: 'active' }); toast('Activated'); this.load(); } catch (e) {} },
+    async pause(id) { try { await api.put(`/api/sequences/${id}`, { status: 'paused' }); toast('Paused'); this.load(); } catch (e) {} },
+    async deleteSeq(id) { if (!confirm('Delete?')) return; try { await api.del(`/api/sequences/${id}`); toast('Deleted'); this.load(); } catch (e) {} },
   };
 }
 </script>

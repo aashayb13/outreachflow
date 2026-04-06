@@ -104,36 +104,36 @@ function templatesApp() {
     },
 
     async saveTemplate() {
-      if (this.editingId) {
-        await api.put(`/api/templates/${this.editingId}`, this.form);
-        toast('Template updated');
-      } else {
-        await api.post('/api/templates', this.form);
-        toast('Template created');
-      }
-      this.showCreate = false;
-      this.editingId = null;
-      this.form = { name: '', subject: '', html_content: '', text_content: '', category: 'general' };
-      this.load();
+      try {
+        if (this.editingId) {
+          await api.put(`/api/templates/${this.editingId}`, this.form);
+          toast('Template updated');
+        } else {
+          await api.post('/api/templates', this.form);
+          toast('Template created');
+        }
+        this.showCreate = false;
+        this.editingId = null;
+        this.form = { name: '', subject: '', html_content: '', text_content: '', category: 'general' };
+        this.load();
+      } catch (e) {}
     },
 
     async previewTemplate(id) {
-      const data = await api.post(`/api/templates/${id}/preview`, { variables: { first_name: 'John', last_name: 'Doe', company: 'Acme Corp', company_name: 'Your Company' } });
-      this.previewHtml = data.html;
-      this.showPreview = true;
+      try {
+        const data = await api.post(`/api/templates/${id}/preview`, { variables: { first_name: 'John', last_name: 'Doe', company: 'Acme Corp', company_name: 'Your Company' } });
+        this.previewHtml = data.html;
+        this.showPreview = true;
+      } catch (e) {}
     },
 
     async duplicateTemplate(id) {
-      await api.post(`/api/templates/${id}/duplicate`);
-      toast('Template duplicated');
-      this.load();
+      try { await api.post(`/api/templates/${id}/duplicate`); toast('Template duplicated'); this.load(); } catch (e) {}
     },
 
     async deleteTemplate(id) {
       if (!confirm('Delete this template?')) return;
-      await api.del(`/api/templates/${id}`);
-      toast('Template deleted');
-      this.load();
+      try { await api.del(`/api/templates/${id}`); toast('Template deleted'); this.load(); } catch (e) {}
     },
   };
 }

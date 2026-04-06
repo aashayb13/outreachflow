@@ -57,6 +57,18 @@ app.use(expressLayouts);
 app.set('layout', 'layout');
 app.set('layout extractScripts', true);
 
+// ─── Health Check (for Render / uptime monitors) ───────────────────
+app.get('/health', (req, res) => {
+  try {
+    const { getDb } = require('./db/connection');
+    const db = getDb();
+    const row = db.prepare('SELECT COUNT(*) as count FROM contacts').get();
+    res.json({ status: 'ok', timestamp: new Date().toISOString(), contacts: row.count });
+  } catch (err) {
+    res.status(503).json({ status: 'error', message: err.message });
+  }
+});
+
 // ─── API Routes ─────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/campaigns', require('./routes/campaigns'));

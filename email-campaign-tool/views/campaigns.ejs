@@ -163,48 +163,44 @@ function campaignsApp() {
     },
 
     async createCampaign() {
-      const payload = { ...this.form };
-      if (payload.list_id) payload.list_ids = [parseInt(payload.list_id)];
-      if (payload.template_id) payload.template_id = parseInt(payload.template_id);
-      delete payload.list_id;
+      try {
+        const payload = { ...this.form };
+        if (payload.list_id) payload.list_ids = [parseInt(payload.list_id)];
+        if (payload.template_id) payload.template_id = parseInt(payload.template_id);
+        delete payload.list_id;
 
-      await api.post('/api/campaigns', payload);
-      this.showCreate = false;
-      this.form = { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', html_content: '' };
-      toast('Campaign created');
-      this.loadCampaigns();
+        await api.post('/api/campaigns', payload);
+        this.showCreate = false;
+        this.form = { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', html_content: '' };
+        toast('Campaign created');
+        this.loadCampaigns();
+      } catch (e) { /* toast shown by api helper */ }
     },
 
     async sendCampaign(id) {
       if (!confirm('Send this campaign now?')) return;
-      const data = await api.post(`/api/campaigns/${id}/send`);
-      toast(data.message || 'Sending started');
-      this.loadCampaigns();
+      try {
+        const data = await api.post(`/api/campaigns/${id}/send`);
+        toast(data.message || 'Sending started');
+        this.loadCampaigns();
+      } catch (e) { /* toast shown by api helper */ }
     },
 
     async pauseCampaign(id) {
-      await api.post(`/api/campaigns/${id}/pause`);
-      toast('Campaign paused');
-      this.loadCampaigns();
+      try { await api.post(`/api/campaigns/${id}/pause`); toast('Campaign paused'); this.loadCampaigns(); } catch (e) {}
     },
 
     async resumeCampaign(id) {
-      await api.post(`/api/campaigns/${id}/resume`);
-      toast('Campaign resumed');
-      this.loadCampaigns();
+      try { await api.post(`/api/campaigns/${id}/resume`); toast('Campaign resumed'); this.loadCampaigns(); } catch (e) {}
     },
 
     async duplicateCampaign(id) {
-      await api.post(`/api/campaigns/${id}/duplicate`);
-      toast('Campaign duplicated');
-      this.loadCampaigns();
+      try { await api.post(`/api/campaigns/${id}/duplicate`); toast('Campaign duplicated'); this.loadCampaigns(); } catch (e) {}
     },
 
     async deleteCampaign(id) {
       if (!confirm('Delete this campaign?')) return;
-      await api.del(`/api/campaigns/${id}`);
-      toast('Campaign deleted');
-      this.loadCampaigns();
+      try { await api.del(`/api/campaigns/${id}`); toast('Campaign deleted'); this.loadCampaigns(); } catch (e) {}
     },
   };
 }

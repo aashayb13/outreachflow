@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(node -e \":*)",
+      "Bash(VIEWS=\"/c/Users/aasha/OneDrive - Patriot Tech Systems Consulting LLC \\(1\\)/dev/outbound-flow-marcus/email-campaign-tool/views\" grep -rn \"include\\\\|partial\" \"$VIEWS\"/*.ejs)"
     ]
   }
 }

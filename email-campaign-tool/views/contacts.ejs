@@ -163,46 +163,49 @@ function contactsApp() {
     },
 
     async saveContact() {
-      if (this.editingId) {
-        await api.put(`/api/contacts/${this.editingId}`, this.form);
-        toast('Contact updated');
-      } else {
-        const payload = { ...this.form };
-        if (payload.list_id) { payload.list_ids = [parseInt(payload.list_id)]; }
-        delete payload.list_id;
-        await api.post('/api/contacts', payload);
-        toast('Contact added');
-      }
-      this.showCreate = false;
-      this.editingId = null;
-      this.form = { email: '', first_name: '', last_name: '', company: '', title: '', phone: '', list_id: '' };
-      this.load();
+      try {
+        if (this.editingId) {
+          await api.put(`/api/contacts/${this.editingId}`, this.form);
+          toast('Contact updated');
+        } else {
+          const payload = { ...this.form };
+          if (payload.list_id) { payload.list_ids = [parseInt(payload.list_id)]; }
+          delete payload.list_id;
+          await api.post('/api/contacts', payload);
+          toast('Contact added');
+        }
+        this.showCreate = false;
+        this.editingId = null;
+        this.form = { email: '', first_name: '', last_name: '', company: '', title: '', phone: '', list_id: '' };
+        this.load();
+      } catch (e) { /* toast shown by api helper */ }
     },
 
     async deleteContact(id) {
       if (!confirm('Delete this contact?')) return;
-      await api.del(`/api/contacts/${id}`);
-      toast('Contact deleted');
-      this.load();
+      try { await api.del(`/api/contacts/${id}`); toast('Contact deleted'); this.load(); } catch (e) {}
     },
 
     init() {
-      // CSV import form handler
-      setTimeout(() => {
+      this.$nextTick(() => {
         const form = document.getElementById('importForm');
         if (form) {
           form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const formData = new FormData(form);
-            const res = await fetch('/api/contacts/import', { method: 'POST', body: formData });
-            const data = await res.json();
-            const resultEl = document.getElementById('importResult');
-            resultEl.textContent = `Imported: ${data.imported}, Skipped: ${data.skipped}, Total: ${data.total}`;
-            resultEl.classList.remove('hidden');
-            this.load();
+            try {
+              const formData = new FormData(form);
+              const data = await api.upload('/api/contacts/import', formData);
+              const resultEl = document.getElementById('importResult');
+              resultEl.textContent = `Imported: ${data.imported}, Skipped: ${data.skipped}, Total: ${data.total}`;
+              resultEl.classList.remove('hidden');
+              if (data.imported > 0) toast(`Imported ${data.imported} contacts`);
+              this.load();
+            } catch (err) {
+              toast('Import failed: ' + err.message, 'error');
+            }
           });
         }
-      }, 100);
+      });
     }
   };
 }

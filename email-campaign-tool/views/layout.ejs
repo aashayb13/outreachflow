@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><%= typeof title !== 'undefined' ? title + ' | ' : '' %>Email Campaign Tool</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <style>
@@ -92,17 +92,35 @@
     // Global API helper
     window.api = {
       async fetch(url, options = {}) {
-        const res = await fetch(url, {
-          headers: { 'Content-Type': 'application/json', ...options.headers },
-          ...options,
-        });
-        if (res.status === 401) { location.href = '/login'; return; }
-        return res.json();
+        try {
+          const res = await window.fetch(url, {
+            headers: { 'Content-Type': 'application/json', ...options.headers },
+            ...options,
+          });
+          if (res.status === 401) { location.href = '/login'; return null; }
+          const data = await res.json();
+          if (!res.ok) {
+            const msg = data.error || `Request failed (${res.status})`;
+            window.toast(msg, 'error');
+            throw new Error(msg);
+          }
+          return data;
+        } catch (err) {
+          if (err.message && !err.message.includes('Request failed')) {
+            window.toast('Network error: ' + err.message, 'error');
+          }
+          throw err;
+        }
       },
       get: (url) => window.api.fetch(url),
       post: (url, body) => window.api.fetch(url, { method: 'POST', body: JSON.stringify(body) }),
       put: (url, body) => window.api.fetch(url, { method: 'PUT', body: JSON.stringify(body) }),
-      del: (url) => window.api.fetch(url, { method: 'DELETE' }),
+      del: (url, body) => window.api.fetch(url, { method: 'DELETE', body: body ? JSON.stringify(body) : undefined }),
+      upload: async (url, formData) => {
+        const res = await window.fetch(url, { method: 'POST', body: formData });
+        if (res.status === 401) { location.href = '/login'; return null; }
+        return res.json();
+      },
     };
 
     // Toast notifications
@@ -114,5 +132,6 @@
       setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 3000);
     };
   </script>
+  <%- script %>
 </body>
 </html>

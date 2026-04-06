@@ -113,9 +113,7 @@ function seqDetail() {
     },
 
     async saveSteps() {
-      await api.put(`/api/sequences/${seqId}/steps`, { steps: this.steps });
-      toast('Steps saved');
-      this.load();
+      try { await api.put(`/api/sequences/${seqId}/steps`, { steps: this.steps }); toast('Steps saved'); this.load(); } catch (e) {}
     },
   };
 }

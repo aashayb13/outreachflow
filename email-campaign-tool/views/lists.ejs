@@ -63,24 +63,24 @@ function listsApp() {
     },
 
     async saveList() {
-      if (this.editingId) {
-        await api.put(`/api/lists/${this.editingId}`, this.form);
-        toast('List updated');
-      } else {
-        await api.post('/api/lists', this.form);
-        toast('List created');
-      }
-      this.showCreate = false;
-      this.editingId = null;
-      this.form = { name: '', description: '' };
-      this.load();
+      try {
+        if (this.editingId) {
+          await api.put(`/api/lists/${this.editingId}`, this.form);
+          toast('List updated');
+        } else {
+          await api.post('/api/lists', this.form);
+          toast('List created');
+        }
+        this.showCreate = false;
+        this.editingId = null;
+        this.form = { name: '', description: '' };
+        this.load();
+      } catch (e) {}
     },
 
     async deleteList(id) {
       if (!confirm('Delete this list?')) return;
-      await api.del(`/api/lists/${id}`);
-      toast('List deleted');
-      this.load();
+      try { await api.del(`/api/lists/${id}`); toast('List deleted'); this.load(); } catch (e) {}
     },
   };
 }

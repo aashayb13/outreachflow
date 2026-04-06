@@ -76,29 +76,29 @@ function webhooksApp() {
     async load() { const data = await api.get('/api/webhooks'); this.webhooks = data.webhooks; },
 
     async create() {
-      await api.post('/api/webhooks', this.form);
-      this.showCreate = false;
-      this.form = { name: '', url: '', secret: '', events: ['*'] };
-      toast('Webhook created');
-      this.load();
+      try {
+        await api.post('/api/webhooks', this.form);
+        this.showCreate = false;
+        this.form = { name: '', url: '', secret: '', events: ['*'] };
+        toast('Webhook created');
+        this.load();
+      } catch (e) {}
     },
 
     async testWebhook(id) {
-      const data = await api.post(`/api/webhooks/${id}/test`);
-      toast(data.success ? 'Test successful' : 'Test failed: ' + (data.error || ''), data.success ? 'success' : 'error');
+      try {
+        const data = await api.post(`/api/webhooks/${id}/test`);
+        toast(data.success ? 'Test successful' : 'Test failed: ' + (data.error || ''), data.success ? 'success' : 'error');
+      } catch (e) {}
     },
 
     async toggleWebhook(w) {
-      await api.put(`/api/webhooks/${w.id}`, { is_active: !w.is_active });
-      toast(w.is_active ? 'Webhook disabled' : 'Webhook enabled');
-      this.load();
+      try { await api.put(`/api/webhooks/${w.id}`, { is_active: !w.is_active }); toast(w.is_active ? 'Webhook disabled' : 'Webhook enabled'); this.load(); } catch (e) {}
     },
 
     async deleteWebhook(id) {
       if (!confirm('Delete?')) return;
-      await api.del(`/api/webhooks/${id}`);
-      toast('Deleted');
-      this.load();
+      try { await api.del(`/api/webhooks/${id}`); toast('Deleted'); this.load(); } catch (e) {}
     },
   };
 }
