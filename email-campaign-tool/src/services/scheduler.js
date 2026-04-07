@@ -6,24 +6,21 @@ const logger = require('../utils/logger');
 
 let scheduledJobs = [];
 
-/**
- * Start all scheduled cron jobs.
- */
 function startScheduler() {
   // Check for scheduled campaigns every minute
   const campaignCheck = cron.schedule('* * * * *', async () => {
     try {
       const db = getDb();
-      const dueCampaigns = db.prepare(`
+      const dueCampaigns = await db.prepare(`
         SELECT id, name FROM campaigns
         WHERE status = 'scheduled'
-          AND scheduled_at <= datetime('now')
+          AND scheduled_at <= NOW()
       `).all();
 
       for (const campaign of dueCampaigns) {
         logger.info(`Launching scheduled campaign: ${campaign.name} (${campaign.id})`);
         try {
-          populateRecipients(campaign.id);
+          await populateRecipients(campaign.id);
           await processCampaign(campaign.id);
         } catch (error) {
           logger.error(`Failed to launch campaign ${campaign.id}: ${error.message}`);
@@ -46,9 +43,9 @@ function startScheduler() {
   scheduledJobs.push(sequenceCheck);
 
   // Aggregate daily stats every hour
-  const statsAgg = cron.schedule('0 * * * *', () => {
+  const statsAgg = cron.schedule('0 * * * *', async () => {
     try {
-      aggregateDailyStats();
+      await aggregateDailyStats();
     } catch (error) {
       logger.error(`Stats aggregation error: ${error.message}`);
     }
@@ -58,14 +55,14 @@ function startScheduler() {
   logger.info('Scheduler started (campaign check: 1min, sequences: 2min, stats: hourly)');
 }
 
-function aggregateDailyStats() {
+async function aggregateDailyStats() {
   const db = getDb();
   const today = new Date().toISOString().slice(0, 10);
 
-  const campaigns = db.prepare('SELECT id FROM campaigns WHERE status IN ("sending","sent")').all();
+  const campaigns = await db.prepare("SELECT id FROM campaigns WHERE status IN ('sending','sent')").all();
 
   for (const { id } of campaigns) {
-    const stats = db.prepare(`
+    const stats = await db.prepare(`
       SELECT
         SUM(CASE WHEN type = 'send' THEN 1 ELSE 0 END) as sends,
         SUM(CASE WHEN type = 'delivered' THEN 1 ELSE 0 END) as deliveries,
@@ -77,13 +74,13 @@ function aggregateDailyStats() {
         SUM(CASE WHEN type = 'complaint' THEN 1 ELSE 0 END) as complaints,
         SUM(CASE WHEN type = 'unsubscribe' THEN 1 ELSE 0 END) as unsubscribes
       FROM events
-      WHERE campaign_id = ? AND date(created_at) = ?
+      WHERE campaign_id = ? AND (created_at)::date = ?::date
     `).get(id, today);
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO daily_stats (date, campaign_id, sends, deliveries, opens, unique_opens, clicks, unique_clicks, bounces, complaints, unsubscribes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(date, campaign_id) DO UPDATE SET
+      ON CONFLICT (date, campaign_id) DO UPDATE SET
         sends = excluded.sends, deliveries = excluded.deliveries,
         opens = excluded.opens, unique_opens = excluded.unique_opens,
         clicks = excluded.clicks, unique_clicks = excluded.unique_clicks,

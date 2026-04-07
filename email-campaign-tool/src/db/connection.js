@@ -1,168 +1,372 @@
-const initSqlJs = require('sql.js');
-const path = require('path');
-const fs = require('fs');
+/**
+ * Postgres connection layer.
+ *
+ * Exposes a thin async wrapper that mimics the better-sqlite3 API used
+ * throughout the rest of the app:
+ *
+ *   const db = getDb();
+ *   const row  = await db.prepare('SELECT * FROM contacts WHERE id = ?').get(id);
+ *   const rows = await db.prepare('SELECT * FROM contacts WHERE status = ?').all('active');
+ *   const r    = await db.prepare('INSERT INTO contacts (email) VALUES (?)').run(email);
+ *   //  → r.changes, r.lastInsertRowid
+ *
+ * Transactions use AsyncLocalStorage so that any db.prepare(...).run/.get/.all
+ * call inside the transaction callback automatically uses the same client:
+ *
+ *   await db.transaction(async () => {
+ *     await db.prepare('INSERT ...').run(...);
+ *     await db.prepare('UPDATE ...').run(...);
+ *   })();
+ *
+ * The wrapper transparently translates SQLite-flavored SQL to Postgres so
+ * existing query strings keep working:
+ *   - `?` placeholders → `$1, $2, ...`
+ *   - `datetime('now')` → `NOW()`
+ *   - `date('now', '-30 days')` → `(NOW() - INTERVAL '30 days')::date`
+ *   - `date(col)` → `(col)::date`
+ *   - `strftime('%H', col)` → `to_char(col, 'HH24')`
+ *   - `LIKE` → `ILIKE` (SQLite LIKE is case-insensitive by default)
+ *   - `COLLATE NOCASE` → stripped (email columns use CITEXT instead)
+ *   - `INSERT OR IGNORE INTO X ...` → `INSERT INTO X ... ON CONFLICT DO NOTHING`
+ *   - `INSERT OR REPLACE INTO X ...` → callers must use `ON CONFLICT ... DO UPDATE` directly
+ *   - INSERTs auto-append `RETURNING id` so `.run()` can populate lastInsertRowid
+ */
+
+const { Pool, types } = require('pg');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const config = require('../config');
 const logger = require('../utils/logger');
 
-let db = null;
-let SQL = null;
-let dbPath = null;
-let saveTimer = null;
-let inTransaction = false;
-let dirty = false;
+// pg returns BIGINT (OID 20) and NUMERIC (OID 1700) as strings by default
+// to avoid loss of precision. Our IDs and counters fit comfortably in JS
+// Number range, and the rest of the app expects numbers — parse them.
+types.setTypeParser(20, (val) => parseInt(val, 10));     // BIGINT / BIGSERIAL
+types.setTypeParser(1700, (val) => parseFloat(val));     // NUMERIC
+
+const txStorage = new AsyncLocalStorage();
+let pool = null;
 
 /**
- * Initialize the SQL.js engine and load/create the database file.
- * Must be called once before getDb().
+ * Initialize the Postgres connection pool. Must be called once during
+ * server startup before getDb() is used.
  */
 async function initDb() {
-  if (db) return db;
+  if (pool) return pool;
 
-  SQL = await initSqlJs();
-  dbPath = path.resolve(config.db.path);
-  const dbDir = path.dirname(dbPath);
-
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+  const connectionString = config.db.url;
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is not set. Configure it in your environment.');
   }
 
-  if (fs.existsSync(dbPath)) {
-    const buffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(buffer);
-    logger.info(`Database loaded from: ${dbPath}`);
-  } else {
-    db = new SQL.Database();
-    logger.info(`New database created: ${dbPath}`);
+  // Render's managed Postgres requires SSL but uses a self-signed cert.
+  // For local dev (DATABASE_URL pointing at localhost) we skip SSL.
+  const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
+  pool = new Pool({
+    connectionString,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+    max: parseInt(process.env.PG_POOL_MAX, 10) || 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  });
+
+  pool.on('error', (err) => {
+    logger.error(`Postgres pool error: ${err.message}`);
+  });
+
+  // Sanity check the connection.
+  const client = await pool.connect();
+  try {
+    await client.query('SELECT 1');
+    logger.info('Postgres connection pool initialized');
+  } finally {
+    client.release();
   }
 
-  // Pragmas
-  db.run('PRAGMA foreign_keys = ON;');
-
-  // Auto-save every 30 seconds
-  saveTimer = setInterval(() => { if (dirty) saveDb(); }, 30000);
-
-  return db;
+  return pool;
 }
 
 /**
- * Get the database instance (synchronous — initDb must have been called).
+ * Return the db facade. Resolves to the active transaction client (via
+ * AsyncLocalStorage) when inside a transaction, otherwise the pool.
  */
 function getDb() {
-  if (!db) throw new Error('Database not initialized. Call initDb() first.');
-  return createDbProxy(db);
+  if (!pool) throw new Error('Database not initialized. Call initDb() first.');
+  return DB_FACADE;
 }
 
-/**
- * Persist the in-memory database to disk.
- */
-function saveDb() {
-  if (!db || !dbPath) return;
-  try {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(dbPath, buffer);
-    dirty = false;
-  } catch (err) {
-    logger.error(`Failed to save database: ${err.message}`);
+async function closeDb() {
+  if (pool) {
+    await pool.end();
+    pool = null;
+    logger.info('Postgres connection pool closed');
   }
 }
 
-function markDirty() {
-  dirty = true;
-  // Save immediately if not in a transaction
-  if (!inTransaction) saveDb();
-}
+// ───────────────────────────────────────────────────────────────────
+// SQL translator: SQLite flavor → Postgres flavor.
+// ───────────────────────────────────────────────────────────────────
 
 /**
- * Close and save the database.
+ * Walks the SQL string and rewrites `?` placeholders to `$N`, skipping
+ * anything inside single-quoted string literals or double-quoted identifiers.
  */
-function closeDb() {
-  if (saveTimer) { clearInterval(saveTimer); saveTimer = null; }
-  saveDb();
-  if (db) {
-    db.close();
-    db = null;
-    logger.info('Database connection closed');
-  }
-}
+function rewritePlaceholders(sql) {
+  let out = '';
+  let n = 0;
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
 
-/**
- * Create a proxy that wraps sql.js DB with a better-sqlite3-compatible API.
- */
-function createDbProxy(rawDb) {
-  return {
-    prepare(sql) {
-      return createStatementProxy(rawDb, sql);
-    },
-    exec(sql) {
-      rawDb.exec(sql);
-      markDirty();
-    },
-    pragma(pragma) {
-      try { rawDb.run(`PRAGMA ${pragma}`); } catch {}
-    },
-    transaction(fn) {
-      return (...args) => {
-        inTransaction = true;
-        rawDb.exec('BEGIN TRANSACTION');
-        try {
-          const result = fn(...args);
-          rawDb.exec('COMMIT');
-          inTransaction = false;
-          markDirty();
-          return result;
-        } catch (err) {
-          try { rawDb.exec('ROLLBACK'); } catch {}
-          inTransaction = false;
-          throw err;
+    if (ch === "'") {
+      out += ch;
+      i++;
+      while (i < sql.length) {
+        out += sql[i];
+        if (sql[i] === "'") {
+          if (sql[i + 1] === "'") {
+            out += sql[i + 1];
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
         }
-      };
-    },
-    close() {
-      rawDb.close();
-    },
-  };
+        i++;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      out += ch;
+      i++;
+      while (i < sql.length && sql[i] !== '"') {
+        out += sql[i];
+        i++;
+      }
+      if (i < sql.length) {
+        out += '"';
+        i++;
+      }
+      continue;
+    }
+
+    if (ch === '-' && sql[i + 1] === '-') {
+      while (i < sql.length && sql[i] !== '\n') {
+        out += sql[i];
+        i++;
+      }
+      continue;
+    }
+
+    if (ch === '?') {
+      n++;
+      out += '$' + n;
+      i++;
+      continue;
+    }
+
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
-function createStatementProxy(rawDb, sql) {
+function translateSql(rawSql) {
+  let sql = rawSql;
+
+  // INSERT OR IGNORE INTO foo (...) VALUES (...) → INSERT INTO foo (...) VALUES (...) ON CONFLICT DO NOTHING
+  // We do this BEFORE auto-RETURNING-id so the ON CONFLICT lands before RETURNING.
+  let isInsertOrIgnore = false;
+  if (/^\s*INSERT\s+OR\s+IGNORE\s+INTO/i.test(sql)) {
+    isInsertOrIgnore = true;
+    sql = sql.replace(/^\s*INSERT\s+OR\s+IGNORE\s+INTO/i, 'INSERT INTO');
+  }
+  if (/^\s*INSERT\s+OR\s+REPLACE\s+INTO/i.test(sql)) {
+    // Callers needing UPSERT should write `ON CONFLICT (...) DO UPDATE` directly.
+    sql = sql.replace(/^\s*INSERT\s+OR\s+REPLACE\s+INTO/i, 'INSERT INTO');
+  }
+
+  // datetime('now') / datetime("now") → NOW()
+  sql = sql.replace(/datetime\(\s*['"]now['"]\s*\)/gi, 'NOW()');
+
+  // date('now', '-30 days') → (NOW() - INTERVAL '30 days')::date
+  sql = sql.replace(
+    /date\(\s*['"]now['"]\s*,\s*['"]([+-]?\d+)\s+(day|days|hour|hours|minute|minutes|month|months|year|years)['"]\s*\)/gi,
+    (_m, num, unit) => {
+      const n = parseInt(num, 10);
+      const sign = n < 0 ? '-' : '+';
+      const abs = Math.abs(n);
+      return `(NOW() ${sign} INTERVAL '${abs} ${unit.toLowerCase()}')::date`;
+    }
+  );
+
+  // date(col) → (col)::date — only when col is a single identifier (avoid mangling DATE keyword usage)
+  sql = sql.replace(/\bdate\(\s*([a-zA-Z_][\w.]*)\s*\)/gi, '($1)::date');
+
+  // strftime('%H', col) → to_char(col, 'HH24')
+  sql = sql.replace(/strftime\(\s*['"]%H['"]\s*,\s*([^)]+?)\s*\)/gi, "to_char($1, 'HH24')");
+  sql = sql.replace(/strftime\(\s*['"]%Y-%m-%d['"]\s*,\s*([^)]+?)\s*\)/gi, "to_char($1, 'YYYY-MM-DD')");
+  sql = sql.replace(/strftime\(\s*['"]%Y-%m['"]\s*,\s*([^)]+?)\s*\)/gi, "to_char($1, 'YYYY-MM')");
+
+  // COLLATE NOCASE — strip (email columns use CITEXT)
+  sql = sql.replace(/\s+COLLATE\s+NOCASE/gi, '');
+
+  // SQLite LIKE is case-insensitive; Postgres LIKE is case-sensitive — use ILIKE.
+  // Match " LIKE " as a whole word so we don't touch identifiers.
+  sql = sql.replace(/\bLIKE\b/gi, 'ILIKE');
+
+  // RANDOM() — works in both SQLite and Postgres, no change needed.
+
+  // last_insert_rowid() — not used directly anymore (RETURNING id handles it),
+  // but if it appears, blow up loudly so we notice.
+  if (/last_insert_rowid\s*\(/i.test(sql)) {
+    throw new Error(`SQL contains last_insert_rowid() — use RETURNING id instead: ${rawSql}`);
+  }
+
+  // Append ON CONFLICT DO NOTHING for INSERT OR IGNORE
+  if (isInsertOrIgnore) {
+    // Place before any existing RETURNING clause
+    if (/\bRETURNING\b/i.test(sql)) {
+      sql = sql.replace(/\bRETURNING\b/i, 'ON CONFLICT DO NOTHING RETURNING');
+    } else {
+      sql = sql.trimEnd().replace(/;?\s*$/, '') + ' ON CONFLICT DO NOTHING';
+    }
+  }
+
+  // Auto-append RETURNING id to INSERT statements that don't already return.
+  // This lets .run() expose lastInsertRowid like better-sqlite3.
+  if (/^\s*INSERT\s+INTO\b/i.test(sql) && !/\bRETURNING\b/i.test(sql)) {
+    sql = sql.trimEnd().replace(/;?\s*$/, '') + ' RETURNING id';
+  }
+
+  // Now rewrite ? → $N (must be last so we don't double-count $-substituted text)
+  sql = rewritePlaceholders(sql);
+
+  return sql;
+}
+
+// Cache translated SQL keyed by raw SQL string (route handlers reuse the same strings).
+const translateCache = new Map();
+function getTranslatedSql(raw) {
+  let cached = translateCache.get(raw);
+  if (cached) return cached;
+  cached = translateSql(raw);
+  if (translateCache.size < 5000) translateCache.set(raw, cached);
+  return cached;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Statement / db facade
+// ───────────────────────────────────────────────────────────────────
+
+function getQueryRunner() {
+  // If we're inside a transaction, use that client; otherwise the pool.
+  return txStorage.getStore() || pool;
+}
+
+function flattenParams(params) {
+  // db.prepare(sql).run(a, b, c) → params = [a, b, c]
+  // db.prepare(sql).run([a, b, c]) → params = [[a, b, c]] — flatten one level for convenience
+  if (params.length === 1 && Array.isArray(params[0])) return params[0];
+  return params;
+}
+
+function createStatement(rawSql) {
+  const translated = getTranslatedSql(rawSql);
+  const isInsert = /^\s*INSERT\s+INTO\b/i.test(translated) || /^\s*INSERT\s+INTO\b/i.test(rawSql);
+
   return {
-    run(...params) {
-      rawDb.run(sql, params);
-      const changes = rawDb.getRowsModified();
-      const result = rawDb.exec('SELECT last_insert_rowid() as id');
-      const lastInsertRowid = result.length > 0 ? result[0].values[0][0] : 0;
-      markDirty();
-      return { changes, lastInsertRowid };
-    },
-    get(...params) {
-      const stmt = rawDb.prepare(sql);
-      stmt.bind(params);
-      if (stmt.step()) {
-        const cols = stmt.getColumnNames();
-        const vals = stmt.get();
-        stmt.free();
-        const row = {};
-        for (let i = 0; i < cols.length; i++) row[cols[i]] = vals[i];
-        return row;
+    async run(...params) {
+      const args = flattenParams(params);
+      const runner = getQueryRunner();
+      try {
+        const result = await runner.query(translated, args);
+        const lastInsertRowid = isInsert && result.rows && result.rows[0]
+          ? result.rows[0].id
+          : undefined;
+        return {
+          changes: result.rowCount || 0,
+          lastInsertRowid,
+        };
+      } catch (err) {
+        throw enrichSqlError(err, rawSql, args);
       }
-      stmt.free();
-      return undefined;
     },
-    all(...params) {
-      const results = [];
-      const stmt = rawDb.prepare(sql);
-      stmt.bind(params);
-      while (stmt.step()) {
-        const cols = stmt.getColumnNames();
-        const vals = stmt.get();
-        const row = {};
-        for (let i = 0; i < cols.length; i++) row[cols[i]] = vals[i];
-        results.push(row);
+
+    async get(...params) {
+      const args = flattenParams(params);
+      const runner = getQueryRunner();
+      try {
+        const result = await runner.query(translated, args);
+        return result.rows[0];
+      } catch (err) {
+        throw enrichSqlError(err, rawSql, args);
       }
-      stmt.free();
-      return results;
+    },
+
+    async all(...params) {
+      const args = flattenParams(params);
+      const runner = getQueryRunner();
+      try {
+        const result = await runner.query(translated, args);
+        return result.rows;
+      } catch (err) {
+        throw enrichSqlError(err, rawSql, args);
+      }
     },
   };
 }
 
-module.exports = { initDb, getDb, closeDb, saveDb };
+function enrichSqlError(err, rawSql, params) {
+  // Surface a SQLite-style "UNIQUE constraint" message so route handlers
+  // that string-match on it keep working.
+  if (err.code === '23505') {
+    err.message = `UNIQUE constraint failed: ${err.detail || err.message}`;
+  }
+  err.sql = rawSql;
+  err.params = params;
+  return err;
+}
+
+const DB_FACADE = {
+  prepare(sql) {
+    return createStatement(sql);
+  },
+
+  async exec(sql) {
+    // Multi-statement script execution (DDL). No translation — caller is
+    // expected to provide Postgres-flavored SQL here (used only by schema.js).
+    const runner = getQueryRunner();
+    await runner.query(sql);
+  },
+
+  /**
+   * Wrap a callback in a transaction. Returns a function (matching the
+   * better-sqlite3 API) that, when invoked, runs the callback inside a
+   * BEGIN/COMMIT block. Any db.prepare(...) calls made inside the callback
+   * automatically use the same client via AsyncLocalStorage.
+   */
+  transaction(fn) {
+    return async (...args) => {
+      // Nested transactions: just run the inner function with the existing client.
+      if (txStorage.getStore()) {
+        return fn(...args);
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await txStorage.run(client, () => fn(...args));
+        await client.query('COMMIT');
+        return result;
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+        throw err;
+      } finally {
+        client.release();
+      }
+    };
+  },
+};
+
+module.exports = { initDb, getDb, closeDb };

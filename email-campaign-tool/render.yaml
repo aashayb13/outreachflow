@@ -1,13 +1,15 @@
 # Render manifest for the email-campaign-tool service.
 #
-# This file is used in two ways:
-#  1. Manual deployment: when creating a Web Service in the Render UI and
-#     pointing it at this subdirectory, Render reads buildCommand/startCommand
-#     from here.
-#  2. Reference for the root-level Blueprint at outbound-flow-marcus/render.yaml
-#
-# Render Blueprints (auto-provision via render.yaml) MUST live at the repo
-# root, so the canonical Blueprint file is one level up.
+# The canonical Blueprint lives at the repo root (../render.yaml). This
+# file is the inline reference used when creating a Web Service manually
+# from the Render UI and pointing it at this subdirectory.
+
+databases:
+  - name: email-campaign-db
+    plan: basic-256mb
+    region: oregon
+    databaseName: email_campaign
+    user: email_campaign
 
 services:
   - type: web
@@ -25,16 +27,24 @@ services:
       - key: PORT
         value: "10000"
 
-      # APP_SECRET doubles as the dashboard login password. Set this manually
-      # — DO NOT use generateValue here, or you will lock yourself out.
+      # APP_SECRET — used to encrypt integration credentials and sign JWTs.
+      # Set manually; never use generateValue here.
       - key: APP_SECRET
+        sync: false
+
+      # Dashboard login (set both manually)
+      - key: APP_EMAIL
+        sync: false
+      - key: APP_PASSWORD
         sync: false
 
       - key: BASE_URL
         sync: false
 
-      - key: DB_PATH
-        value: /data/campaigns.db
+      - key: DATABASE_URL
+        fromDatabase:
+          name: email-campaign-db
+          property: connectionString
 
       # SMTP — set after you have Gmail App Password / Mailgun / SendGrid creds
       - key: SMTP_HOST
@@ -71,8 +81,3 @@ services:
         value: "900000"
       - key: RATE_LIMIT_MAX_REQUESTS
         value: "100"
-
-    disk:
-      name: email-campaign-data
-      mountPath: /data
-      sizeGB: 1

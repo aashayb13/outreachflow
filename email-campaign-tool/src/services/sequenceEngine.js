@@ -8,19 +8,17 @@ const logger = require('../utils/logger');
 /**
  * Enroll a contact into a drip sequence.
  */
-function enrollContact(sequenceId, contactId) {
+async function enrollContact(sequenceId, contactId) {
   const db = getDb();
 
-  // Check if already enrolled and active
-  const existing = db.prepare(`
+  const existing = await db.prepare(`
     SELECT id FROM sequence_enrollments
     WHERE sequence_id = ? AND contact_id = ? AND status = 'active'
   `).get(sequenceId, contactId);
 
   if (existing) return { enrolled: false, reason: 'Already enrolled' };
 
-  // Get first step
-  const firstStep = db.prepare(`
+  const firstStep = await db.prepare(`
     SELECT * FROM sequence_steps WHERE sequence_id = ? AND is_active = 1 ORDER BY step_order ASC LIMIT 1
   `).get(sequenceId);
 
@@ -29,13 +27,12 @@ function enrollContact(sequenceId, contactId) {
     nextActionAt = calculateDelayDate(firstStep.delay_amount, firstStep.delay_unit);
   }
 
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO sequence_enrollments (sequence_id, contact_id, current_step, status, next_action_at)
     VALUES (?, ?, 0, 'active', ?)
   `).run(sequenceId, contactId, nextActionAt);
 
-  db.prepare('UPDATE sequences SET total_enrolled = total_enrolled + 1, updated_at = datetime("now") WHERE id = ?')
-    .run(sequenceId);
+  await db.prepare('UPDATE sequences SET total_enrolled = total_enrolled + 1, updated_at = NOW() WHERE id = ?').run(sequenceId);
 
   fireWebhooks('sequence.enrolled', { sequence_id: sequenceId, contact_id: contactId });
 
@@ -48,12 +45,12 @@ function enrollContact(sequenceId, contactId) {
 async function processSequences() {
   const db = getDb();
 
-  const dueEnrollments = db.prepare(`
+  const dueEnrollments = await db.prepare(`
     SELECT se.*, s.name as sequence_name
     FROM sequence_enrollments se
     JOIN sequences s ON s.id = se.sequence_id
     WHERE se.status = 'active'
-      AND se.next_action_at <= datetime('now')
+      AND se.next_action_at <= NOW()
       AND s.status = 'active'
     ORDER BY se.next_action_at ASC
     LIMIT 100
@@ -66,8 +63,7 @@ async function processSequences() {
       await processEnrollmentStep(enrollment);
     } catch (error) {
       logger.error(`Error processing enrollment ${enrollment.id}: ${error.message}`);
-      db.prepare('UPDATE sequence_enrollments SET status = "failed", updated_at = datetime("now") WHERE id = ?')
-        .run(enrollment.id);
+      await db.prepare("UPDATE sequence_enrollments SET status = 'failed', updated_at = NOW() WHERE id = ?").run(enrollment.id);
     }
   }
 }
@@ -75,17 +71,15 @@ async function processSequences() {
 async function processEnrollmentStep(enrollment) {
   const db = getDb();
 
-  const steps = db.prepare(`
+  const steps = await db.prepare(`
     SELECT * FROM sequence_steps WHERE sequence_id = ? AND is_active = 1 ORDER BY step_order ASC
   `).all(enrollment.sequence_id);
 
   if (enrollment.current_step >= steps.length) {
-    // Sequence complete
-    db.prepare(`
-      UPDATE sequence_enrollments SET status = 'completed', completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?
+    await db.prepare(`
+      UPDATE sequence_enrollments SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = ?
     `).run(enrollment.id);
-    db.prepare('UPDATE sequences SET total_completed = total_completed + 1, updated_at = datetime("now") WHERE id = ?')
-      .run(enrollment.sequence_id);
+    await db.prepare('UPDATE sequences SET total_completed = total_completed + 1, updated_at = NOW() WHERE id = ?').run(enrollment.sequence_id);
     fireWebhooks('sequence.completed', {
       sequence_id: enrollment.sequence_id,
       contact_id: enrollment.contact_id,
@@ -94,11 +88,10 @@ async function processEnrollmentStep(enrollment) {
   }
 
   const step = steps[enrollment.current_step];
-  const contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(enrollment.contact_id);
+  const contact = await db.prepare('SELECT * FROM contacts WHERE id = ?').get(enrollment.contact_id);
 
   if (!contact || contact.status !== 'active') {
-    db.prepare('UPDATE sequence_enrollments SET status = "exited", updated_at = datetime("now") WHERE id = ?')
-      .run(enrollment.id);
+    await db.prepare("UPDATE sequence_enrollments SET status = 'exited', updated_at = NOW() WHERE id = ?").run(enrollment.id);
     return;
   }
 
@@ -109,7 +102,7 @@ async function processEnrollmentStep(enrollment) {
       let subject = step.subject;
 
       if (step.template_id) {
-        const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(step.template_id);
+        const template = await db.prepare('SELECT * FROM templates WHERE id = ?').get(step.template_id);
         if (template) {
           html = html || template.html_content;
           text = text || template.text_content;
@@ -139,7 +132,6 @@ async function processEnrollmentStep(enrollment) {
     }
 
     case 'delay':
-      // Delay is handled by setting next_action_at
       break;
 
     case 'webhook': {
@@ -166,30 +158,26 @@ async function processEnrollmentStep(enrollment) {
 
     case 'tag': {
       if (step.action_type === 'add') {
-        const tag = db.prepare('SELECT id FROM tags WHERE name = ?').get(step.action_target);
+        const tag = await db.prepare('SELECT id FROM tags WHERE name = ?').get(step.action_target);
         if (tag) {
-          db.prepare('INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)')
-            .run(contact.id, tag.id);
+          await db.prepare('INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)').run(contact.id, tag.id);
         }
       } else if (step.action_type === 'remove') {
-        const tag = db.prepare('SELECT id FROM tags WHERE name = ?').get(step.action_target);
+        const tag = await db.prepare('SELECT id FROM tags WHERE name = ?').get(step.action_target);
         if (tag) {
-          db.prepare('DELETE FROM contact_tags WHERE contact_id = ? AND tag_id = ?')
-            .run(contact.id, tag.id);
+          await db.prepare('DELETE FROM contact_tags WHERE contact_id = ? AND tag_id = ?').run(contact.id, tag.id);
         }
       }
       break;
     }
 
     case 'list_action': {
-      const list = db.prepare('SELECT id FROM lists WHERE name = ?').get(step.action_target);
+      const list = await db.prepare('SELECT id FROM lists WHERE name = ?').get(step.action_target);
       if (list) {
         if (step.action_type === 'add') {
-          db.prepare('INSERT OR IGNORE INTO list_contacts (list_id, contact_id) VALUES (?, ?)')
-            .run(list.id, contact.id);
+          await db.prepare('INSERT OR IGNORE INTO list_contacts (list_id, contact_id) VALUES (?, ?)').run(list.id, contact.id);
         } else if (step.action_type === 'remove') {
-          db.prepare('DELETE FROM list_contacts WHERE list_id = ? AND contact_id = ?')
-            .run(list.id, contact.id);
+          await db.prepare('DELETE FROM list_contacts WHERE list_id = ? AND contact_id = ?').run(list.id, contact.id);
         }
       }
       break;
@@ -211,8 +199,8 @@ async function processEnrollmentStep(enrollment) {
     nextActionAt = new Date().toISOString();
   }
 
-  db.prepare(`
-    UPDATE sequence_enrollments SET current_step = ?, next_action_at = ?, updated_at = datetime('now') WHERE id = ?
+  await db.prepare(`
+    UPDATE sequence_enrollments SET current_step = ?, next_action_at = ?, updated_at = NOW() WHERE id = ?
   `).run(nextStepIdx, nextActionAt, enrollment.id);
 }
 

@@ -25,14 +25,6 @@ const app = express();
 // rate limiting, and accurate req.protocol.
 app.set('trust proxy', 1);
 
-// Ensure the database directory exists (resolved from DB_PATH).
-// On Render this is /data (a mounted persistent disk).
-const dbDir = path.dirname(path.resolve(config.db.path));
-if (!fs.existsSync(dbDir)) {
-  try { fs.mkdirSync(dbDir, { recursive: true }); }
-  catch (err) { logger.warn(`Could not create db dir ${dbDir}: ${err.message}`); }
-}
-
 // Ensure logs directory exists for local/dev file logging. In production
 // the logger writes to stdout only, so this is best-effort.
 try {
@@ -72,11 +64,11 @@ app.set('layout', 'layout');
 app.set('layout extractScripts', true);
 
 // ─── Health Check (for Render / uptime monitors) ───────────────────
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
   try {
     const { getDb } = require('./db/connection');
     const db = getDb();
-    const row = db.prepare('SELECT COUNT(*) as count FROM contacts').get();
+    const row = await db.prepare('SELECT COUNT(*) as count FROM contacts').get();
     res.json({ status: 'ok', timestamp: new Date().toISOString(), contacts: row.count });
   } catch (err) {
     res.status(503).json({ status: 'error', message: err.message });
@@ -169,9 +161,9 @@ app.use(errorHandler);
 let server;
 
 async function start() {
-  // Initialize database (async for sql.js WASM loading)
+  // Initialize Postgres connection pool and ensure schema is up to date.
   await initDb();
-  initializeSchema();
+  await initializeSchema();
 
   server = app.listen(config.port, () => {
     logger.info(`
@@ -193,11 +185,11 @@ start().catch(err => {
 });
 
 // ─── Graceful Shutdown ──────────────────────────────────────────────
-function shutdown(signal) {
+async function shutdown(signal) {
   logger.info(`${signal} received. Shutting down...`);
   stopScheduler();
   closeTransporter();
-  closeDb();
+  try { await closeDb(); } catch (_) { /* ignore */ }
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);

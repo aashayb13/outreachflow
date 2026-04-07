@@ -26,8 +26,6 @@ const logger = require('../utils/logger');
 
 router.use(authenticate);
 
-// Tighter rate limit on remote-call endpoints (test/search/import) to avoid
-// burning third-party quota by accident.
 const remoteCallLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -62,9 +60,9 @@ function rowToPublic(row) {
   };
 }
 
-function getIntegrationOr404(req, res) {
+async function getIntegrationOr404(req, res) {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM integrations WHERE id = ?').get(req.params.id);
+  const row = await db.prepare('SELECT * FROM integrations WHERE id = ?').get(req.params.id);
   if (!row) {
     res.status(404).json({ error: 'Integration not found' });
     return null;
@@ -80,99 +78,107 @@ router.get('/providers', (req, res) => {
 
 // ─── CRUD ─────────────────────────────────────────────────────────
 
-router.get('/', (req, res) => {
-  const db = getDb();
-  const rows = db.prepare('SELECT * FROM integrations ORDER BY created_at DESC').all();
-  res.json({ integrations: rows.map(rowToPublic) });
+router.get('/', async (req, res, next) => {
+  try {
+    const db = getDb();
+    const rows = await db.prepare('SELECT * FROM integrations ORDER BY created_at DESC').all();
+    res.json({ integrations: rows.map(rowToPublic) });
+  } catch (err) { next(err); }
 });
 
-router.get('/:id', (req, res) => {
-  const row = getIntegrationOr404(req, res);
-  if (!row) return;
-  res.json({ integration: rowToPublic(row) });
+router.get('/:id', async (req, res, next) => {
+  try {
+    const row = await getIntegrationOr404(req, res);
+    if (!row) return;
+    res.json({ integration: rowToPublic(row) });
+  } catch (err) { next(err); }
 });
 
-router.post('/', requirePermission('write'), (req, res) => {
-  const { name, provider, credentials, config = {}, is_active = 1 } = req.body || {};
-  if (!name || !provider) return res.status(400).json({ error: 'name and provider are required' });
+router.post('/', requirePermission('write'), async (req, res, next) => {
+  try {
+    const { name, provider, credentials, config = {}, is_active = 1 } = req.body || {};
+    if (!name || !provider) return res.status(400).json({ error: 'name and provider are required' });
 
-  let providerMeta;
-  try { providerMeta = getProvider(provider).meta; }
-  catch (err) { return res.status(400).json({ error: err.message }); }
+    let providerMeta;
+    try { providerMeta = getProvider(provider).meta; }
+    catch (err) { return res.status(400).json({ error: err.message }); }
 
-  // Validate required credential fields are present
-  const required = (providerMeta.credential_fields || []).filter(f => f.required).map(f => f.key);
-  for (const key of required) {
-    if (!credentials || !credentials[key]) {
-      return res.status(400).json({ error: `Credential field '${key}' is required for ${providerMeta.name}` });
+    const required = (providerMeta.credential_fields || []).filter(f => f.required).map(f => f.key);
+    for (const key of required) {
+      if (!credentials || !credentials[key]) {
+        return res.status(400).json({ error: `Credential field '${key}' is required for ${providerMeta.name}` });
+      }
     }
-  }
 
-  const db = getDb();
-  const result = db.prepare(`
-    INSERT INTO integrations (name, provider, credentials, config, is_active)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(
-    name,
-    provider,
-    encryptJSON(credentials || {}),
-    JSON.stringify(config || {}),
-    is_active ? 1 : 0
-  );
+    const db = getDb();
+    const result = await db.prepare(`
+      INSERT INTO integrations (name, provider, credentials, config, is_active)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      name,
+      provider,
+      encryptJSON(credentials || {}),
+      JSON.stringify(config || {}),
+      is_active ? 1 : 0
+    );
 
-  const row = db.prepare('SELECT * FROM integrations WHERE id = ?').get(result.lastInsertRowid);
-  logger.info(`Integration created: ${name} (${provider})`);
-  res.status(201).json({ integration: rowToPublic(row) });
+    const row = await db.prepare('SELECT * FROM integrations WHERE id = ?').get(result.lastInsertRowid);
+    logger.info(`Integration created: ${name} (${provider})`);
+    res.status(201).json({ integration: rowToPublic(row) });
+  } catch (err) { next(err); }
 });
 
-router.put('/:id', requirePermission('write'), (req, res) => {
-  const row = getIntegrationOr404(req, res);
-  if (!row) return;
+router.put('/:id', requirePermission('write'), async (req, res, next) => {
+  try {
+    const row = await getIntegrationOr404(req, res);
+    if (!row) return;
 
-  const db = getDb();
-  const updates = [];
-  const values = [];
+    const db = getDb();
+    const updates = [];
+    const values = [];
 
-  if (req.body.name !== undefined) { updates.push('name = ?'); values.push(req.body.name); }
-  if (req.body.is_active !== undefined) { updates.push('is_active = ?'); values.push(req.body.is_active ? 1 : 0); }
+    if (req.body.name !== undefined) { updates.push('name = ?'); values.push(req.body.name); }
+    if (req.body.is_active !== undefined) { updates.push('is_active = ?'); values.push(req.body.is_active ? 1 : 0); }
 
-  if (req.body.credentials !== undefined) {
-    // Merge new credentials over existing ones — empty fields don't wipe.
-    const existing = decryptJSON(row.credentials);
-    const merged = { ...existing };
-    for (const [k, v] of Object.entries(req.body.credentials || {})) {
-      if (v !== '' && v !== null && v !== undefined) merged[k] = v;
+    if (req.body.credentials !== undefined) {
+      const existing = decryptJSON(row.credentials);
+      const merged = { ...existing };
+      for (const [k, v] of Object.entries(req.body.credentials || {})) {
+        if (v !== '' && v !== null && v !== undefined) merged[k] = v;
+      }
+      updates.push('credentials = ?');
+      values.push(encryptJSON(merged));
     }
-    updates.push('credentials = ?');
-    values.push(encryptJSON(merged));
-  }
 
-  if (req.body.config !== undefined) {
-    updates.push('config = ?');
-    values.push(JSON.stringify(req.body.config || {}));
-  }
+    if (req.body.config !== undefined) {
+      updates.push('config = ?');
+      values.push(JSON.stringify(req.body.config || {}));
+    }
 
-  if (updates.length === 0) return res.json({ integration: rowToPublic(row) });
+    if (updates.length === 0) return res.json({ integration: rowToPublic(row) });
 
-  updates.push('updated_at = datetime("now")');
-  db.prepare(`UPDATE integrations SET ${updates.join(', ')} WHERE id = ?`).run(...values, row.id);
+    updates.push('updated_at = NOW()');
+    await db.prepare(`UPDATE integrations SET ${updates.join(', ')} WHERE id = ?`).run(...values, row.id);
 
-  const updated = db.prepare('SELECT * FROM integrations WHERE id = ?').get(row.id);
-  res.json({ integration: rowToPublic(updated) });
+    const updated = await db.prepare('SELECT * FROM integrations WHERE id = ?').get(row.id);
+    res.json({ integration: rowToPublic(updated) });
+  } catch (err) { next(err); }
 });
 
-router.delete('/:id', requirePermission('admin'), (req, res) => {
-  const row = getIntegrationOr404(req, res);
-  if (!row) return;
-  const db = getDb();
-  db.prepare('DELETE FROM integrations WHERE id = ?').run(row.id);
-  res.json({ message: 'Integration deleted' });
+router.delete('/:id', requirePermission('admin'), async (req, res, next) => {
+  try {
+    const row = await getIntegrationOr404(req, res);
+    if (!row) return;
+    const db = getDb();
+    await db.prepare('DELETE FROM integrations WHERE id = ?').run(row.id);
+    res.json({ message: 'Integration deleted' });
+  } catch (err) { next(err); }
 });
 
 // ─── Remote calls (test / search / import) ───────────────────────
 
 router.post('/:id/test', remoteCallLimiter, requirePermission('write'), async (req, res, next) => {
-  const row = getIntegrationOr404(req, res);
+  const row = await getIntegrationOr404(req, res);
   if (!row) return;
   try {
     const result = await testIntegration(row);
@@ -184,7 +190,7 @@ router.post('/:id/test', remoteCallLimiter, requirePermission('write'), async (r
 });
 
 router.post('/:id/search', remoteCallLimiter, requirePermission('write'), async (req, res) => {
-  const row = getIntegrationOr404(req, res);
+  const row = await getIntegrationOr404(req, res);
   if (!row) return;
   if (!row.is_active) return res.status(400).json({ error: 'Integration is disabled' });
   try {
@@ -197,7 +203,7 @@ router.post('/:id/search', remoteCallLimiter, requirePermission('write'), async 
 });
 
 router.post('/:id/import', remoteCallLimiter, requirePermission('write'), async (req, res) => {
-  const row = getIntegrationOr404(req, res);
+  const row = await getIntegrationOr404(req, res);
   if (!row) return;
   if (!row.is_active) return res.status(400).json({ error: 'Integration is disabled' });
 
@@ -214,21 +220,23 @@ router.post('/:id/import', remoteCallLimiter, requirePermission('write'), async 
 
 // ─── Sync history ────────────────────────────────────────────────
 
-router.get('/:id/logs', (req, res) => {
-  const row = getIntegrationOr404(req, res);
-  if (!row) return;
-  const db = getDb();
-  const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
-  const logs = db.prepare(`
-    SELECT * FROM integration_sync_logs WHERE integration_id = ?
-    ORDER BY created_at DESC LIMIT ?
-  `).all(row.id, limit);
-  res.json({
-    logs: logs.map(l => ({
-      ...l,
-      query: (() => { try { return JSON.parse(l.query); } catch { return {}; } })(),
-    })),
-  });
+router.get('/:id/logs', async (req, res, next) => {
+  try {
+    const row = await getIntegrationOr404(req, res);
+    if (!row) return;
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const logs = await db.prepare(`
+      SELECT * FROM integration_sync_logs WHERE integration_id = ?
+      ORDER BY created_at DESC LIMIT ?
+    `).all(row.id, limit);
+    res.json({
+      logs: logs.map(l => ({
+        ...l,
+        query: (() => { try { return JSON.parse(l.query); } catch { return {}; } })(),
+      })),
+    });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

@@ -5,9 +5,13 @@ module.exports = {
   env: process.env.NODE_ENV || 'development',
   baseUrl: process.env.BASE_URL || 'http://localhost:3000',
   appSecret: process.env.APP_SECRET || 'dev-secret-change-me',
+  appEmail: process.env.APP_EMAIL || '',
+  appPassword: process.env.APP_PASSWORD || '',
 
   db: {
-    path: process.env.DB_PATH || './data/campaigns.db',
+    // Postgres connection string. On Render this is wired to the managed
+    // Postgres service via render.yaml; locally set DATABASE_URL in .env.
+    url: process.env.DATABASE_URL || '',
   },
 
   smtp: {

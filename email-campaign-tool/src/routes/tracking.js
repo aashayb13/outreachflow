@@ -8,23 +8,21 @@ const logger = require('../utils/logger');
 const PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 
 // Open tracking pixel
-router.get('/open/:campaignId/:contactId', (req, res) => {
+router.get('/open/:campaignId/:contactId', async (req, res) => {
   const { campaignId, contactId } = req.params;
   const db = getDb();
 
   try {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO events (campaign_id, contact_id, type, ip_address, user_agent, metadata)
       VALUES (?, ?, 'open', ?, ?, '{}')
     `).run(campaignId, contactId, req.ip, req.get('user-agent') || '');
 
-    // Update campaign stats
-    db.prepare('UPDATE campaigns SET total_opens = total_opens + 1, updated_at = datetime("now") WHERE id = ?').run(campaignId);
+    await db.prepare("UPDATE campaigns SET total_opens = total_opens + 1, updated_at = NOW() WHERE id = ?").run(campaignId);
 
-    // Check if first open from this contact
-    const openCount = db.prepare('SELECT COUNT(*) as c FROM events WHERE campaign_id = ? AND contact_id = ? AND type = "open"').get(campaignId, contactId).c;
-    if (openCount === 1) {
-      db.prepare('UPDATE campaigns SET total_unique_opens = total_unique_opens + 1 WHERE id = ?').run(campaignId);
+    const openRow = await db.prepare("SELECT COUNT(*) as c FROM events WHERE campaign_id = ? AND contact_id = ? AND type = 'open'").get(campaignId, contactId);
+    if (parseInt(openRow.c, 10) === 1) {
+      await db.prepare('UPDATE campaigns SET total_unique_opens = total_unique_opens + 1 WHERE id = ?').run(campaignId);
     }
 
     fireWebhooks('email.opened', { campaign_id: campaignId, contact_id: contactId });
@@ -37,7 +35,7 @@ router.get('/open/:campaignId/:contactId', (req, res) => {
 });
 
 // Click tracking redirect
-router.get('/click/:campaignId/:contactId', (req, res) => {
+router.get('/click/:campaignId/:contactId', async (req, res) => {
   const { campaignId, contactId } = req.params;
   const { url } = req.query;
 
@@ -45,16 +43,16 @@ router.get('/click/:campaignId/:contactId', (req, res) => {
 
   const db = getDb();
   try {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO events (campaign_id, contact_id, type, url, ip_address, user_agent, metadata)
       VALUES (?, ?, 'click', ?, ?, ?, '{}')
     `).run(campaignId, contactId, url, req.ip, req.get('user-agent') || '');
 
-    db.prepare('UPDATE campaigns SET total_clicks = total_clicks + 1, updated_at = datetime("now") WHERE id = ?').run(campaignId);
+    await db.prepare("UPDATE campaigns SET total_clicks = total_clicks + 1, updated_at = NOW() WHERE id = ?").run(campaignId);
 
-    const clickCount = db.prepare('SELECT COUNT(*) as c FROM events WHERE campaign_id = ? AND contact_id = ? AND type = "click"').get(campaignId, contactId).c;
-    if (clickCount === 1) {
-      db.prepare('UPDATE campaigns SET total_unique_clicks = total_unique_clicks + 1 WHERE id = ?').run(campaignId);
+    const clickRow = await db.prepare("SELECT COUNT(*) as c FROM events WHERE campaign_id = ? AND contact_id = ? AND type = 'click'").get(campaignId, contactId);
+    if (parseInt(clickRow.c, 10) === 1) {
+      await db.prepare('UPDATE campaigns SET total_unique_clicks = total_unique_clicks + 1 WHERE id = ?').run(campaignId);
     }
 
     fireWebhooks('email.clicked', { campaign_id: campaignId, contact_id: contactId, url });
@@ -66,26 +64,18 @@ router.get('/click/:campaignId/:contactId', (req, res) => {
 });
 
 // Unsubscribe handler
-router.get('/unsubscribe/:campaignId/:contactId', (req, res) => {
+router.get('/unsubscribe/:campaignId/:contactId', async (req, res) => {
   const { campaignId, contactId } = req.params;
   const db = getDb();
 
   try {
-    const contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(contactId);
+    const contact = await db.prepare('SELECT * FROM contacts WHERE id = ?').get(contactId);
     if (contact) {
-      // Update contact status
-      db.prepare('UPDATE contacts SET status = "unsubscribed", updated_at = datetime("now") WHERE id = ?').run(contactId);
-
-      // Add to suppression list
-      db.prepare('INSERT OR IGNORE INTO suppression_list (email, reason, source) VALUES (?, "unsubscribe", ?)').run(contact.email, `campaign_${campaignId}`);
-
-      // Log event
-      db.prepare('INSERT INTO events (campaign_id, contact_id, type, metadata) VALUES (?, ?, "unsubscribe", "{}")').run(campaignId, contactId);
-
-      db.prepare('UPDATE campaigns SET total_unsubscribes = total_unsubscribes + 1, updated_at = datetime("now") WHERE id = ?').run(campaignId);
-
-      // Exit any active sequences
-      db.prepare('UPDATE sequence_enrollments SET status = "exited", updated_at = datetime("now") WHERE contact_id = ? AND status = "active"').run(contactId);
+      await db.prepare("UPDATE contacts SET status = 'unsubscribed', updated_at = NOW() WHERE id = ?").run(contactId);
+      await db.prepare("INSERT OR IGNORE INTO suppression_list (email, reason, source) VALUES (?, 'unsubscribe', ?)").run(contact.email, `campaign_${campaignId}`);
+      await db.prepare("INSERT INTO events (campaign_id, contact_id, type, metadata) VALUES (?, ?, 'unsubscribe', '{}')").run(campaignId, contactId);
+      await db.prepare("UPDATE campaigns SET total_unsubscribes = total_unsubscribes + 1, updated_at = NOW() WHERE id = ?").run(campaignId);
+      await db.prepare("UPDATE sequence_enrollments SET status = 'exited', updated_at = NOW() WHERE contact_id = ? AND status = 'active'").run(contactId);
 
       fireWebhooks('contact.unsubscribed', { campaign_id: campaignId, contact_id: contactId, email: contact.email });
     }
@@ -93,7 +83,6 @@ router.get('/unsubscribe/:campaignId/:contactId', (req, res) => {
     logger.error(`Unsubscribe error: ${err.message}`);
   }
 
-  // Show unsubscribe confirmation page
   res.send(`<!DOCTYPE html><html><head><title>Unsubscribed</title>
 <style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#F9FAFB;}
 .card{background:white;padding:40px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);text-align:center;max-width:400px;}
@@ -102,55 +91,59 @@ h1{color:#111827;font-size:24px;} p{color:#6B7280;}</style></head>
 <p>You will no longer receive emails from us. If this was a mistake, please contact us.</p></div></body></html>`);
 });
 
-// Bounce webhook handler (for external services to report bounces)
-router.post('/bounce', express.json(), (req, res) => {
-  const db = getDb();
-  const { email, type = 'hard', campaign_id, message_id } = req.body;
+// Bounce webhook handler
+router.post('/bounce', express.json(), async (req, res, next) => {
+  try {
+    const db = getDb();
+    const { email, type = 'hard', campaign_id, message_id } = req.body;
 
-  if (!email) return res.status(400).json({ error: 'Email required' });
+    if (!email) return res.status(400).json({ error: 'Email required' });
 
-  const contact = db.prepare('SELECT * FROM contacts WHERE email = ? COLLATE NOCASE').get(email);
-  if (contact) {
-    if (type === 'hard') {
-      db.prepare('UPDATE contacts SET status = "bounced", updated_at = datetime("now") WHERE id = ?').run(contact.id);
-      db.prepare('INSERT OR IGNORE INTO suppression_list (email, reason) VALUES (?, "bounce")').run(email);
+    const contact = await db.prepare('SELECT * FROM contacts WHERE email = ?').get(email);
+    if (contact) {
+      if (type === 'hard') {
+        await db.prepare("UPDATE contacts SET status = 'bounced', updated_at = NOW() WHERE id = ?").run(contact.id);
+        await db.prepare("INSERT OR IGNORE INTO suppression_list (email, reason) VALUES (?, 'bounce')").run(email);
+      }
+
+      if (campaign_id) {
+        await db.prepare("INSERT INTO events (campaign_id, contact_id, type, metadata) VALUES (?, ?, 'bounce', ?)").run(
+          campaign_id, contact.id, JSON.stringify({ bounce_type: type, message_id })
+        );
+        await db.prepare("UPDATE campaigns SET total_bounces = total_bounces + 1, updated_at = NOW() WHERE id = ?").run(campaign_id);
+        await db.prepare("UPDATE campaign_recipients SET status = 'bounced' WHERE campaign_id = ? AND contact_id = ?").run(campaign_id, contact.id);
+      }
+
+      fireWebhooks('email.bounced', { email, contact_id: contact.id, type, campaign_id });
     }
 
-    if (campaign_id) {
-      db.prepare('INSERT INTO events (campaign_id, contact_id, type, metadata) VALUES (?, ?, "bounce", ?)').run(
-        campaign_id, contact.id, JSON.stringify({ bounce_type: type, message_id })
-      );
-      db.prepare('UPDATE campaigns SET total_bounces = total_bounces + 1, updated_at = datetime("now") WHERE id = ?').run(campaign_id);
-      db.prepare('UPDATE campaign_recipients SET status = "bounced" WHERE campaign_id = ? AND contact_id = ?').run(campaign_id, contact.id);
-    }
-
-    fireWebhooks('email.bounced', { email, contact_id: contact.id, type, campaign_id });
-  }
-
-  res.json({ received: true });
+    res.json({ received: true });
+  } catch (err) { next(err); }
 });
 
 // Complaint webhook handler
-router.post('/complaint', express.json(), (req, res) => {
-  const db = getDb();
-  const { email, campaign_id } = req.body;
+router.post('/complaint', express.json(), async (req, res, next) => {
+  try {
+    const db = getDb();
+    const { email, campaign_id } = req.body;
 
-  if (!email) return res.status(400).json({ error: 'Email required' });
+    if (!email) return res.status(400).json({ error: 'Email required' });
 
-  const contact = db.prepare('SELECT * FROM contacts WHERE email = ? COLLATE NOCASE').get(email);
-  if (contact) {
-    db.prepare('UPDATE contacts SET status = "complained", updated_at = datetime("now") WHERE id = ?').run(contact.id);
-    db.prepare('INSERT OR IGNORE INTO suppression_list (email, reason) VALUES (?, "complaint")').run(email);
+    const contact = await db.prepare('SELECT * FROM contacts WHERE email = ?').get(email);
+    if (contact) {
+      await db.prepare("UPDATE contacts SET status = 'complained', updated_at = NOW() WHERE id = ?").run(contact.id);
+      await db.prepare("INSERT OR IGNORE INTO suppression_list (email, reason) VALUES (?, 'complaint')").run(email);
 
-    if (campaign_id) {
-      db.prepare('INSERT INTO events (campaign_id, contact_id, type, metadata) VALUES (?, ?, "complaint", "{}")').run(campaign_id, contact.id);
-      db.prepare('UPDATE campaigns SET total_complaints = total_complaints + 1, updated_at = datetime("now") WHERE id = ?').run(campaign_id);
+      if (campaign_id) {
+        await db.prepare("INSERT INTO events (campaign_id, contact_id, type, metadata) VALUES (?, ?, 'complaint', '{}')").run(campaign_id, contact.id);
+        await db.prepare("UPDATE campaigns SET total_complaints = total_complaints + 1, updated_at = NOW() WHERE id = ?").run(campaign_id);
+      }
+
+      fireWebhooks('email.complained', { email, contact_id: contact.id, campaign_id });
     }
 
-    fireWebhooks('email.complained', { email, contact_id: contact.id, campaign_id });
-  }
-
-  res.json({ received: true });
+    res.json({ received: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

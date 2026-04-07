@@ -6,7 +6,7 @@ const config = require('../config');
 /**
  * Authenticate requests via API key (header) or JWT (cookie/header).
  */
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   // Check API key first
   const apiKey = req.headers['x-api-key'] || req.query.api_key;
   if (apiKey) {
@@ -20,16 +20,20 @@ function authenticate(req, res, next) {
     // Check against database API keys
     const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
     const db = getDb();
-    const keyRecord = db.prepare('SELECT * FROM api_keys WHERE key_hash = ? AND is_active = 1').get(keyHash);
+    try {
+      const keyRecord = await db.prepare('SELECT * FROM api_keys WHERE key_hash = ? AND is_active = 1').get(keyHash);
 
-    if (keyRecord) {
-      if (keyRecord.expires_at && new Date(keyRecord.expires_at) < new Date()) {
-        return res.status(401).json({ error: 'API key expired' });
+      if (keyRecord) {
+        if (keyRecord.expires_at && new Date(keyRecord.expires_at) < new Date()) {
+          return res.status(401).json({ error: 'API key expired' });
+        }
+        await db.prepare('UPDATE api_keys SET last_used_at = NOW() WHERE id = ?').run(keyRecord.id);
+        req.authMethod = 'api_key';
+        req.permissions = JSON.parse(keyRecord.permissions || '["read"]');
+        return next();
       }
-      db.prepare('UPDATE api_keys SET last_used_at = datetime("now") WHERE id = ?').run(keyRecord.id);
-      req.authMethod = 'api_key';
-      req.permissions = JSON.parse(keyRecord.permissions || '["read"]');
-      return next();
+    } catch (err) {
+      return next(err);
     }
 
     return res.status(401).json({ error: 'Invalid API key' });
