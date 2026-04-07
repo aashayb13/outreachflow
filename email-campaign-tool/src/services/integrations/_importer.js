@@ -8,20 +8,80 @@ const logger = require('../../utils/logger');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Map of canonical contact field → list of accepted aliases (case-sensitive,
+// matched verbatim against the CSV header). Covers Apollo, Hunter, Lead Magic,
+// HubSpot, Salesforce, plus snake_case / camelCase variants.
+const FIELD_ALIASES = {
+  email:      ['email', 'Email', 'EMAIL', 'Email Address', 'email_address', 'work_email', 'Work Email'],
+  first_name: ['first_name', 'firstName', 'FirstName', 'First Name', 'first name'],
+  last_name:  ['last_name', 'lastName', 'LastName', 'Last Name', 'last name'],
+  company:    ['company', 'Company', 'organization', 'organization_name', 'Organization', 'Company Name', 'company_name', 'Account Name'],
+  phone:      ['phone', 'Phone', 'phone_number', 'Phone Number', 'Work Direct Phone', 'Mobile Phone', 'Corporate Phone', 'Direct Phone'],
+  title:      ['title', 'Title', 'job_title', 'Job Title', 'Position'],
+  industry:   ['industry', 'Industry'],
+  city:       ['city', 'City', 'Company City', 'Contact City'],
+  state:      ['state', 'State', 'Company State', 'Contact State'],
+  country:    ['country', 'Country', 'Company Country', 'Contact Country'],
+};
+
+// Build a reverse lookup: lowercased alias → canonical field name.
+// We lowercase to make matching forgiving against weird Apollo variants.
+const ALIAS_TO_FIELD = (() => {
+  const map = {};
+  for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
+    for (const alias of aliases) map[alias.toLowerCase().trim()] = field;
+  }
+  return map;
+})();
+
+// Core fields that get their own column on contacts. Anything in the row
+// that ISN'T one of these is stashed into custom_fields so Apollo extras
+// like "Person Linkedin Url", "Annual Revenue", "Apollo Contact Id", etc.
+// are preserved without losing data.
+const CORE_FIELDS = new Set([
+  'email', 'first_name', 'last_name', 'company', 'phone',
+  'title', 'industry', 'city', 'state', 'country',
+]);
+
+/**
+ * Normalize a raw lead row (from a CSV, API response, or webhook payload)
+ * into the contact-table shape. Recognizes Apollo / Hunter / Lead Magic /
+ * HubSpot column names, and stashes everything else into custom_fields.
+ */
 function normalizeLead(lead) {
-  return {
-    email: (lead.email || '').trim().toLowerCase(),
-    first_name: lead.first_name || lead.firstName || '',
-    last_name: lead.last_name || lead.lastName || '',
-    company: lead.company || lead.organization || lead.organization_name || '',
-    phone: lead.phone || lead.phone_number || '',
-    title: lead.title || lead.job_title || '',
-    industry: lead.industry || '',
-    city: lead.city || '',
-    state: lead.state || '',
-    country: lead.country || '',
-    custom_fields: lead.custom_fields || {},
+  // First pass: pull out aliased fields into a normalized object.
+  const out = {
+    email: '', first_name: '', last_name: '', company: '', phone: '',
+    title: '', industry: '', city: '', state: '', country: '',
+    custom_fields: {},
   };
+
+  // If the caller already passed a custom_fields object, preserve it.
+  if (lead.custom_fields && typeof lead.custom_fields === 'object') {
+    Object.assign(out.custom_fields, lead.custom_fields);
+  }
+
+  for (const [rawKey, rawVal] of Object.entries(lead)) {
+    if (rawKey === 'custom_fields') continue;
+    const val = rawVal == null ? '' : String(rawVal).trim();
+    if (!val) continue;
+
+    const canonical = ALIAS_TO_FIELD[rawKey.toLowerCase().trim()];
+    if (canonical && !out[canonical]) {
+      out[canonical] = val;
+    } else if (!canonical) {
+      // Unknown column → stash into custom_fields under a normalized key
+      // (e.g. "Person Linkedin Url" → "person_linkedin_url"). Strip empty
+      // values and obvious noise so the JSON blob stays useful.
+      const key = rawKey.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      if (key && !(key in out.custom_fields)) {
+        out.custom_fields[key] = val;
+      }
+    }
+  }
+
+  out.email = out.email.toLowerCase();
+  return out;
 }
 
 /**

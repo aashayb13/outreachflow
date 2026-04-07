@@ -6,6 +6,7 @@ const { stringify } = require('csv-stringify/sync');
 const { getDb } = require('../db/connection');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { fireWebhooks } = require('../services/webhookService');
+const { importLeads } = require('../services/integrations/_importer');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -186,83 +187,44 @@ router.delete('/:id', requirePermission('admin'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Bulk import contacts via CSV
+// Bulk import contacts via CSV (Apollo, Hunter, Lead Magic, HubSpot, etc).
+// Field mapping is delegated to importLeads() / normalizeLead() so column
+// names from any major lead-gen tool are recognized, and any unknown columns
+// get stashed into custom_fields automatically.
 router.post('/import', requirePermission('write'), upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'CSV file is required' });
 
-    const { list_id, tags: tagNames, source = 'csv_import' } = req.body;
+    const { list_id, tags: rawTags, source = 'csv_import' } = req.body;
 
-    const records = parse(req.file.buffer.toString('utf8'), {
+    // Strip a UTF-8 BOM if present (Apollo's exports occasionally include one).
+    let csv = req.file.buffer.toString('utf8');
+    if (csv.charCodeAt(0) === 0xFEFF) csv = csv.slice(1);
+
+    const records = parse(csv, {
       columns: true,
       skip_empty_lines: true,
       trim: true,
+      relax_column_count: true,  // tolerate ragged Apollo rows
+      bom: true,
     });
 
-    const db = getDb();
-    let imported = 0;
-    let skipped = 0;
-    const errors = [];
+    const tags = typeof rawTags === 'string'
+      ? rawTags.split(',').map(t => t.trim()).filter(Boolean)
+      : (Array.isArray(rawTags) ? rawTags : []);
 
-    await db.transaction(async () => {
-      for (const row of records) {
-        const email = row.email || row.Email || row.EMAIL;
-        if (!email || !email.includes('@')) {
-          skipped++;
-          errors.push(`Invalid email: ${email || 'empty'}`);
-          continue;
-        }
+    const result = await importLeads(records, {
+      source,
+      list_id: list_id ? parseInt(list_id, 10) : undefined,
+      tags,
+    });
 
-        const suppressed = await db.prepare('SELECT id FROM suppression_list WHERE email = ?').get(email);
-        if (suppressed) { skipped++; continue; }
-
-        const result = await db.prepare(`
-          INSERT OR IGNORE INTO contacts (email, first_name, last_name, company, phone, title, industry, city, state, country, source)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          email,
-          row.first_name || row.FirstName || row['First Name'] || '',
-          row.last_name || row.LastName || row['Last Name'] || '',
-          row.company || row.Company || '',
-          row.phone || row.Phone || '',
-          row.title || row.Title || '',
-          row.industry || row.Industry || '',
-          row.city || row.City || '',
-          row.state || row.State || '',
-          row.country || row.Country || '',
-          source
-        );
-
-        if (result.changes > 0) {
-          imported++;
-          const contactId = result.lastInsertRowid;
-
-          if (list_id) {
-            await db.prepare('INSERT OR IGNORE INTO list_contacts (list_id, contact_id) VALUES (?, ?)').run(parseInt(list_id), contactId);
-          }
-
-          if (tagNames) {
-            const tagList = typeof tagNames === 'string' ? tagNames.split(',').map(t => t.trim()) : tagNames;
-            for (const name of tagList) {
-              await db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').run(name);
-              const tag = await db.prepare('SELECT id FROM tags WHERE name = ?').get(name);
-              if (tag) await db.prepare('INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)').run(contactId, tag.id);
-            }
-          }
-        } else {
-          skipped++;
-        }
-      }
-    })();
-
-    // Update list count
-    if (list_id) {
-      const row = await db.prepare('SELECT COUNT(*) as c FROM list_contacts WHERE list_id = ?').get(parseInt(list_id));
-      await db.prepare('UPDATE lists SET contact_count = ?, updated_at = NOW() WHERE id = ?').run(parseInt(row.c, 10), parseInt(list_id));
-    }
-
-    fireWebhooks('contacts.imported', { imported, skipped, total: records.length });
-    res.json({ imported, skipped, total: records.length, errors: errors.slice(0, 20) });
+    res.json({
+      imported: result.imported,
+      skipped: result.skipped,
+      total: result.total,
+      errors: result.errors,
+    });
   } catch (err) { next(err); }
 });
 

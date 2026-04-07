@@ -102,6 +102,10 @@ async function closeDb() {
   }
 }
 
+// Junction tables with composite primary keys and no `id` column.
+// The translator must NOT auto-append `RETURNING id` for these inserts.
+const TABLES_WITHOUT_ID = new Set(['list_contacts', 'contact_tags']);
+
 // ───────────────────────────────────────────────────────────────────
 // SQL translator: SQLite flavor → Postgres flavor.
 // ───────────────────────────────────────────────────────────────────
@@ -233,10 +237,17 @@ function translateSql(rawSql) {
     }
   }
 
-  // Auto-append RETURNING id to INSERT statements that don't already return.
-  // This lets .run() expose lastInsertRowid like better-sqlite3.
-  if (/^\s*INSERT\s+INTO\b/i.test(sql) && !/\bRETURNING\b/i.test(sql)) {
-    sql = sql.trimEnd().replace(/;?\s*$/, '') + ' RETURNING id';
+  // Auto-append RETURNING id to INSERT statements that don't already return,
+  // so .run() can expose lastInsertRowid like better-sqlite3.
+  //
+  // Skip junction tables that have no `id` column (composite primary keys) —
+  // appending RETURNING id there would error with "column id does not exist".
+  const insertMatch = sql.match(/^\s*INSERT\s+INTO\s+([a-zA-Z_][\w]*)/i);
+  if (insertMatch && !/\bRETURNING\b/i.test(sql)) {
+    const table = insertMatch[1].toLowerCase();
+    if (!TABLES_WITHOUT_ID.has(table)) {
+      sql = sql.trimEnd().replace(/;?\s*$/, '') + ' RETURNING id';
+    }
   }
 
   // Now rewrite ? → $N (must be last so we don't double-count $-substituted text)
@@ -273,7 +284,10 @@ function flattenParams(params) {
 
 function createStatement(rawSql) {
   const translated = getTranslatedSql(rawSql);
-  const isInsert = /^\s*INSERT\s+INTO\b/i.test(translated) || /^\s*INSERT\s+INTO\b/i.test(rawSql);
+  // Only look for an `id` in the result rows if the translated SQL actually
+  // returns one — i.e. it's an INSERT and we appended RETURNING id (which we
+  // skip for junction tables, see TABLES_WITHOUT_ID).
+  const returnsId = /\bRETURNING\b[\s\S]*\bid\b/i.test(translated);
 
   return {
     async run(...params) {
@@ -281,7 +295,7 @@ function createStatement(rawSql) {
       const runner = getQueryRunner();
       try {
         const result = await runner.query(translated, args);
-        const lastInsertRowid = isInsert && result.rows && result.rows[0]
+        const lastInsertRowid = returnsId && result.rows && result.rows[0]
           ? result.rows[0].id
           : undefined;
         return {
