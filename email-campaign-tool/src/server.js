@@ -20,11 +20,25 @@ const { errorHandler, notFound } = require('./middleware/errorHandler');
 // ─── Bootstrap ──────────────────────────────────────────────────────
 const app = express();
 
-// Ensure data and log directories exist
-for (const dir of ['data', 'logs']) {
-  const p = path.resolve(dir);
-  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+// Trust the first proxy (Render, Heroku, Cloudflare, etc.).
+// Required for: secure cookies (X-Forwarded-Proto), real client IPs in
+// rate limiting, and accurate req.protocol.
+app.set('trust proxy', 1);
+
+// Ensure the database directory exists (resolved from DB_PATH).
+// On Render this is /data (a mounted persistent disk).
+const dbDir = path.dirname(path.resolve(config.db.path));
+if (!fs.existsSync(dbDir)) {
+  try { fs.mkdirSync(dbDir, { recursive: true }); }
+  catch (err) { logger.warn(`Could not create db dir ${dbDir}: ${err.message}`); }
 }
+
+// Ensure logs directory exists for local/dev file logging. In production
+// the logger writes to stdout only, so this is best-effort.
+try {
+  const logDir = path.resolve('logs');
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+} catch (_) { /* read-only FS in cloud — ignore */ }
 
 // Database initialized in start() below
 
@@ -79,6 +93,7 @@ app.use('/api/sequences', require('./routes/sequences'));
 app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/tags', require('./routes/tags'));
 app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/integrations', require('./routes/integrations'));
 
 // ─── Tracking Routes (public, no auth) ─────────────────────────────
 app.use('/t', require('./routes/tracking'));
@@ -126,6 +141,10 @@ app.get('/webhooks', authenticate, (req, res) => {
 
 app.get('/analytics', authenticate, (req, res) => {
   res.render('analytics', { title: 'Analytics', page: 'analytics' });
+});
+
+app.get('/integrations', authenticate, (req, res) => {
+  res.render('integrations', { title: 'API Integrations', page: 'integrations' });
 });
 
 app.get('/settings', authenticate, (req, res) => {

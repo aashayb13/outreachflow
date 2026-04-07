@@ -1,0 +1,89 @@
+# ─────────────────────────────────────────────────────────────────
+# Render Blueprint (canonical) for the outbound-flow-marcus repo.
+#
+# The actual app lives in the email-campaign-tool/ subdirectory, so we
+# use rootDir to point Render at it. Render Blueprints MUST be at the
+# repo root, which is why this file exists in addition to the inner
+# email-campaign-tool/render.yaml.
+#
+# Deployment:
+#   1. Push this repo to GitHub.
+#   2. In Render: New + → Blueprint → connect this repo.
+#   3. Render will detect this file and provision:
+#       - 1 web service (email-campaign-tool)
+#       - 1 persistent disk (1 GB at /data)
+#   4. Fill in the env vars marked `sync: false` in the Render UI.
+#   5. Hit Deploy.
+#
+# See email-campaign-tool/DEPLOY.md for the full step-by-step.
+# ─────────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: email-campaign-tool
+    runtime: node
+    plan: starter            # $7/mo — required for persistent disk
+    region: oregon
+    rootDir: email-campaign-tool
+    buildCommand: npm ci
+    startCommand: node src/server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+
+      # ⚠️  APP_SECRET doubles as the dashboard login password.
+      # Set it manually in the Render dashboard. DO NOT use generateValue
+      # here, or you will be locked out of the UI.
+      - key: APP_SECRET
+        sync: false
+
+      - key: BASE_URL
+        sync: false
+
+      - key: DB_PATH
+        value: /data/campaigns.db
+
+      # ─── SMTP (set after you have credentials) ──────────────────
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM_NAME
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+
+      # ─── Optional: master API key for /api/* (X-API-Key header) ──
+      - key: API_KEY
+        sync: false
+
+      - key: WEBHOOK_SECRET
+        generateValue: true
+
+      - key: TRACKING_DOMAIN
+        sync: false
+
+      - key: SEND_RATE_PER_SECOND
+        value: "5"
+      - key: SEND_RATE_PER_DAY
+        value: "2000"
+
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "100"
+
+    disk:
+      name: email-campaign-data
+      mountPath: /data
+      sizeGB: 1

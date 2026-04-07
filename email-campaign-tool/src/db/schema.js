@@ -322,6 +322,42 @@ function initializeSchema() {
       UNIQUE(date, campaign_id)
     );
     CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date);
+
+    -- ═══════════════════════════════════════════════════════════
+    -- LEAD-GEN INTEGRATIONS (Apollo, Hunter, Lead Magic, etc.)
+    -- ═══════════════════════════════════════════════════════════
+    CREATE TABLE IF NOT EXISTS integrations (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      name            TEXT NOT NULL,
+      provider        TEXT NOT NULL,                  -- 'apollo' | 'hunter' | 'leadmagic' | 'clearbit' | 'snov' | 'custom'
+      credentials     TEXT NOT NULL DEFAULT '{}',     -- AES-GCM encrypted JSON blob
+      config          TEXT NOT NULL DEFAULT '{}',     -- non-secret JSON (default tags, default list, daily cap)
+      is_active       INTEGER DEFAULT 1,
+      last_tested_at  DATETIME DEFAULT NULL,
+      last_test_ok    INTEGER DEFAULT NULL,
+      last_test_error TEXT DEFAULT '',
+      total_imported  INTEGER DEFAULT 0,
+      total_calls     INTEGER DEFAULT 0,
+      created_at      DATETIME DEFAULT (datetime('now')),
+      updated_at      DATETIME DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_integrations_provider ON integrations(provider);
+
+    CREATE TABLE IF NOT EXISTS integration_sync_logs (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      integration_id  INTEGER REFERENCES integrations(id) ON DELETE CASCADE,
+      action          TEXT NOT NULL,                  -- 'test' | 'search' | 'import'
+      status          TEXT NOT NULL,                  -- 'success' | 'error'
+      query           TEXT DEFAULT '{}',              -- JSON of input params
+      results_count   INTEGER DEFAULT 0,
+      imported_count  INTEGER DEFAULT 0,
+      skipped_count   INTEGER DEFAULT 0,
+      error_message   TEXT DEFAULT '',
+      duration_ms     INTEGER DEFAULT 0,
+      created_at      DATETIME DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_int_logs_int ON integration_sync_logs(integration_id);
+    CREATE INDEX IF NOT EXISTS idx_int_logs_created ON integration_sync_logs(created_at);
   `);
 
   logger.info('Database schema initialized');

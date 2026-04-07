@@ -1,22 +1,42 @@
+# Render manifest for the email-campaign-tool service.
+#
+# This file is used in two ways:
+#  1. Manual deployment: when creating a Web Service in the Render UI and
+#     pointing it at this subdirectory, Render reads buildCommand/startCommand
+#     from here.
+#  2. Reference for the root-level Blueprint at outbound-flow-marcus/render.yaml
+#
+# Render Blueprints (auto-provision via render.yaml) MUST live at the repo
+# root, so the canonical Blueprint file is one level up.
+
 services:
   - type: web
     name: email-campaign-tool
     runtime: node
     plan: starter
-    buildCommand: npm install
+    region: oregon
+    buildCommand: npm ci
     startCommand: node src/server.js
     healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "10000"
+
+      # APP_SECRET doubles as the dashboard login password. Set this manually
+      # — DO NOT use generateValue here, or you will lock yourself out.
       - key: APP_SECRET
-        generateValue: true
+        sync: false
+
       - key: BASE_URL
         sync: false
+
       - key: DB_PATH
         value: /data/campaigns.db
+
+      # SMTP — set after you have Gmail App Password / Mailgun / SendGrid creds
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -31,14 +51,27 @@ services:
         sync: false
       - key: SMTP_FROM_EMAIL
         sync: false
+
+      # Optional: master API key for programmatic access (X-API-Key header)
+      - key: API_KEY
+        sync: false
+
       - key: WEBHOOK_SECRET
         generateValue: true
+
       - key: TRACKING_DOMAIN
         sync: false
+
       - key: SEND_RATE_PER_SECOND
         value: "5"
       - key: SEND_RATE_PER_DAY
         value: "2000"
+
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "100"
+
     disk:
       name: email-campaign-data
       mountPath: /data

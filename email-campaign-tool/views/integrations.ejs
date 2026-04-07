@@ -1,0 +1,426 @@
+<div x-data="integrationsApp()" x-init="load()">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <p class="text-sm text-gray-500">Connect lead-gen providers (Apollo, Hunter, Lead Magic, Clearbit, Snov.io) to pull contacts directly into your lists.</p>
+      <p class="text-xs text-gray-400 mt-1">Credentials are encrypted at rest. All imports honor your suppression list.</p>
+    </div>
+    <button @click="openCreate()" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
+      <i class="fas fa-plus mr-1"></i> Add Integration
+    </button>
+  </div>
+
+  <!-- Provider catalog -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+    <h3 class="text-sm font-semibold text-gray-700 mb-3">Available Providers</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <template x-for="p in providers" :key="p.id">
+        <div class="border border-gray-200 rounded-lg p-3 hover:border-blue-400 cursor-pointer" @click="openCreateFor(p.id)">
+          <div class="flex items-center justify-between">
+            <h4 class="font-semibold text-gray-800 text-sm" x-text="p.name"></h4>
+            <i class="fas fa-plus-circle text-blue-500"></i>
+          </div>
+          <p class="text-xs text-gray-500 mt-1" x-text="p.description"></p>
+          <a :href="p.docs_url" target="_blank" rel="noopener" @click.stop class="text-xs text-blue-500 hover:underline mt-1 inline-block">API docs ↗</a>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Existing integrations -->
+  <div class="space-y-4">
+    <template x-for="i in integrations" :key="i.id">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <div class="flex items-start justify-between">
+          <div class="flex-1">
+            <div class="flex items-center gap-3">
+              <h3 class="font-semibold text-gray-800" x-text="i.name"></h3>
+              <span class="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700" x-text="providerName(i.provider)"></span>
+              <span class="text-xs px-2 py-1 rounded-full" :class="i.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" x-text="i.is_active ? 'Active' : 'Disabled'"></span>
+              <template x-if="i.last_test_ok === true">
+                <span class="text-xs px-2 py-1 rounded-full bg-green-50 text-green-600"><i class="fas fa-check-circle mr-1"></i>Connected</span>
+              </template>
+              <template x-if="i.last_test_ok === false">
+                <span class="text-xs px-2 py-1 rounded-full bg-red-50 text-red-600" :title="i.last_test_error"><i class="fas fa-exclamation-triangle mr-1"></i>Auth failed</span>
+              </template>
+            </div>
+            <div class="text-xs text-gray-400 mt-2 flex gap-4 flex-wrap">
+              <span><i class="fas fa-key mr-1"></i><span x-text="formatCreds(i.credentials_masked)"></span></span>
+              <span><i class="fas fa-download mr-1"></i><span x-text="i.total_imported + ' imported'"></span></span>
+              <span><i class="fas fa-bolt mr-1"></i><span x-text="i.total_calls + ' API calls'"></span></span>
+              <span x-show="i.last_tested_at"><i class="fas fa-clock mr-1"></i>Tested <span x-text="new Date(i.last_tested_at).toLocaleString()"></span></span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 ml-4">
+            <button @click="testOne(i)" class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-200" title="Test credentials"><i class="fas fa-vial mr-1"></i>Test</button>
+            <button @click="openSearch(i)" class="text-xs bg-blue-500 text-white px-3 py-1.5 rounded hover:bg-blue-600" title="Search & import"><i class="fas fa-search mr-1"></i>Search</button>
+            <button @click="openLogs(i)" class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-200" title="Sync history"><i class="fas fa-history"></i></button>
+            <button @click="toggleActive(i)" class="text-gray-400 hover:text-yellow-500 px-2" title="Toggle"><i class="fas fa-power-off"></i></button>
+            <button @click="deleteOne(i)" class="text-gray-400 hover:text-red-500 px-2" title="Delete"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+      </div>
+    </template>
+    <div x-show="integrations.length === 0" class="bg-white rounded-xl p-8 text-center text-gray-400 shadow-sm">
+      No integrations yet. Pick a provider above to get started.
+    </div>
+  </div>
+
+  <!-- ───────── Create / Edit Modal ───────── -->
+  <div x-show="showCreate" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto" @click.self="showCreate = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 my-8">
+      <h3 class="text-lg font-semibold mb-4">New Integration</h3>
+      <form @submit.prevent="create()">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Provider</label>
+            <select x-model="form.provider" @change="onProviderChange()" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">— Select provider —</option>
+              <template x-for="p in providers" :key="p.id">
+                <option :value="p.id" x-text="p.name"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Name</label>
+            <input type="text" x-model="form.name" required placeholder="e.g. Apollo - Field Services ICP" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+
+          <template x-if="selectedProvider()">
+            <div class="border-t pt-3 space-y-3">
+              <p class="text-xs text-gray-500"><i class="fas fa-shield-alt mr-1"></i>Credentials are encrypted with AES-256-GCM before storage.</p>
+              <template x-for="field in selectedProvider().credential_fields" :key="field.key">
+                <div>
+                  <label class="block text-xs font-medium text-gray-700 mb-1">
+                    <span x-text="field.label"></span>
+                    <span x-show="field.required" class="text-red-500">*</span>
+                  </label>
+                  <input :type="field.type || 'text'" x-model="form.credentials[field.key]" :required="field.required"
+                         class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono" />
+                  <p x-show="field.help" class="text-xs text-gray-400 mt-1" x-text="field.help"></p>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button type="button" @click="showCreate = false" class="px-4 py-2 text-sm text-gray-600">Cancel</button>
+          <button type="submit" class="bg-blue-500 text-white px-6 py-2 rounded-lg text-sm">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ───────── Search / Import Modal ───────── -->
+  <div x-show="showSearch" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto" @click.self="closeSearch()">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 my-8 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold">
+          Search via <span x-text="activeIntegration?.name"></span>
+        </h3>
+        <button @click="closeSearch()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+      </div>
+
+      <form @submit.prevent="runPreview()">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <template x-for="field in searchFields()" :key="field.key">
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1" x-text="field.label"></label>
+
+              <template x-if="field.type === 'select'">
+                <select x-model="searchParams[field.key]" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <template x-for="opt in field.options" :key="opt">
+                    <option :value="opt" x-text="opt"></option>
+                  </template>
+                </select>
+              </template>
+
+              <template x-if="field.type !== 'select'">
+                <input :type="field.type || 'text'" x-model="searchParams[field.key]"
+                       :placeholder="field.placeholder || ''"
+                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <div class="border-t mt-4 pt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Add to List (optional)</label>
+            <select x-model="importOpts.list_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">— None —</option>
+              <template x-for="l in lists" :key="l.id">
+                <option :value="l.id" x-text="l.name"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Tags (comma-separated)</label>
+            <input type="text" x-model="importOpts.tags_text" placeholder="e.g. apollo, field-services" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 mt-4">
+          <button type="submit" :disabled="busy" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-200">
+            <i class="fas fa-eye mr-1"></i>Preview (Dry Run)
+          </button>
+          <button type="button" @click="runImport()" :disabled="busy" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600">
+            <i class="fas fa-download mr-1"></i>Import Now
+          </button>
+        </div>
+      </form>
+
+      <!-- Results -->
+      <div x-show="searchResult" class="mt-6 border-t pt-4">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="text-sm font-semibold text-gray-700">Results</h4>
+          <div class="text-xs text-gray-500">
+            <span x-text="(searchResult?.imported || 0) + ' new'"></span> ·
+            <span x-text="(searchResult?.skipped || 0) + ' skipped (duplicates/suppressed)'"></span> ·
+            <span x-text="'total ' + (searchResult?.total || 0)"></span>
+          </div>
+        </div>
+        <div class="overflow-x-auto" x-show="(searchResult?.preview || []).length > 0">
+          <table class="w-full text-xs">
+            <thead class="bg-gray-50 text-gray-600">
+              <tr>
+                <th class="text-left px-2 py-1">Email</th>
+                <th class="text-left px-2 py-1">Name</th>
+                <th class="text-left px-2 py-1">Title</th>
+                <th class="text-left px-2 py-1">Company</th>
+                <th class="text-left px-2 py-1">Location</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(c, idx) in searchResult?.preview || []" :key="idx">
+                <tr class="border-t border-gray-100">
+                  <td class="px-2 py-1 font-mono" x-text="c.email"></td>
+                  <td class="px-2 py-1" x-text="(c.first_name + ' ' + c.last_name).trim()"></td>
+                  <td class="px-2 py-1" x-text="c.title"></td>
+                  <td class="px-2 py-1" x-text="c.company"></td>
+                  <td class="px-2 py-1" x-text="[c.city, c.state, c.country].filter(Boolean).join(', ')"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <template x-if="(searchResult?.errors || []).length > 0">
+          <div class="mt-3 text-xs text-red-500">
+            <div class="font-semibold mb-1">Issues:</div>
+            <ul class="list-disc list-inside">
+              <template x-for="(e, i) in searchResult.errors" :key="i"><li x-text="e"></li></template>
+            </ul>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Logs Modal ───────── -->
+  <div x-show="showLogs" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto" @click.self="showLogs = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 my-8 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold">Sync History</h3>
+        <button @click="showLogs = false" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+      </div>
+      <table class="w-full text-xs">
+        <thead class="bg-gray-50 text-gray-600">
+          <tr>
+            <th class="text-left px-2 py-1">When</th>
+            <th class="text-left px-2 py-1">Action</th>
+            <th class="text-left px-2 py-1">Status</th>
+            <th class="text-right px-2 py-1">Results</th>
+            <th class="text-right px-2 py-1">Imported</th>
+            <th class="text-right px-2 py-1">ms</th>
+            <th class="text-left px-2 py-1">Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="l in logs" :key="l.id">
+            <tr class="border-t border-gray-100">
+              <td class="px-2 py-1" x-text="new Date(l.created_at).toLocaleString()"></td>
+              <td class="px-2 py-1" x-text="l.action"></td>
+              <td class="px-2 py-1" :class="l.status === 'success' ? 'text-green-600' : 'text-red-600'" x-text="l.status"></td>
+              <td class="px-2 py-1 text-right" x-text="l.results_count"></td>
+              <td class="px-2 py-1 text-right" x-text="l.imported_count"></td>
+              <td class="px-2 py-1 text-right" x-text="l.duration_ms"></td>
+              <td class="px-2 py-1 text-red-500 truncate max-w-xs" x-text="l.error_message"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div x-show="logs.length === 0" class="text-center text-gray-400 py-6">No activity yet</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function integrationsApp() {
+  return {
+    integrations: [],
+    providers: [],
+    lists: [],
+    showCreate: false,
+    showSearch: false,
+    showLogs: false,
+    busy: false,
+    activeIntegration: null,
+    searchParams: {},
+    importOpts: { list_id: '', tags_text: '' },
+    searchResult: null,
+    logs: [],
+    form: { name: '', provider: '', credentials: {} },
+
+    async load() {
+      try {
+        const [a, b, c] = await Promise.all([
+          api.get('/api/integrations'),
+          api.get('/api/integrations/providers'),
+          api.get('/api/lists'),
+        ]);
+        this.integrations = a.integrations || [];
+        this.providers = b.providers || [];
+        this.lists = (c?.lists || c) || [];
+        if (!Array.isArray(this.lists)) this.lists = [];
+      } catch (e) {}
+    },
+
+    providerName(id) {
+      const p = this.providers.find(x => x.id === id);
+      return p ? p.name : id;
+    },
+
+    selectedProvider() {
+      return this.providers.find(p => p.id === this.form.provider);
+    },
+
+    formatCreds(masked) {
+      if (!masked) return '—';
+      return Object.entries(masked).map(([k, v]) => `${k}: ${v}`).join(' · ');
+    },
+
+    onProviderChange() {
+      this.form.credentials = {};
+    },
+
+    openCreate() {
+      this.form = { name: '', provider: '', credentials: {} };
+      this.showCreate = true;
+    },
+
+    openCreateFor(providerId) {
+      this.form = { name: '', provider: providerId, credentials: {} };
+      this.showCreate = true;
+    },
+
+    async create() {
+      try {
+        await api.post('/api/integrations', this.form);
+        this.showCreate = false;
+        toast('Integration created');
+        this.load();
+      } catch (e) {}
+    },
+
+    async testOne(i) {
+      try {
+        const r = await api.post(`/api/integrations/${i.id}/test`);
+        toast(r.ok ? 'Connection OK' : ('Test failed: ' + (r.error || '')), r.ok ? 'success' : 'error');
+        this.load();
+      } catch (e) {
+        this.load();
+      }
+    },
+
+    async toggleActive(i) {
+      try {
+        await api.put(`/api/integrations/${i.id}`, { is_active: !i.is_active });
+        toast(i.is_active ? 'Disabled' : 'Enabled');
+        this.load();
+      } catch (e) {}
+    },
+
+    async deleteOne(i) {
+      if (!confirm(`Delete integration "${i.name}"? This cannot be undone.`)) return;
+      try {
+        await api.del(`/api/integrations/${i.id}`);
+        toast('Deleted');
+        this.load();
+      } catch (e) {}
+    },
+
+    searchFields() {
+      if (!this.activeIntegration) return [];
+      const p = this.providers.find(x => x.id === this.activeIntegration.provider);
+      return p ? (p.search_fields || []) : [];
+    },
+
+    openSearch(i) {
+      this.activeIntegration = i;
+      this.searchParams = {};
+      // Pre-fill defaults
+      const p = this.providers.find(x => x.id === i.provider);
+      if (p) for (const f of (p.search_fields || [])) {
+        if (f.default !== undefined) this.searchParams[f.key] = f.default;
+      }
+      this.searchResult = null;
+      this.importOpts = { list_id: '', tags_text: '' };
+      this.showSearch = true;
+    },
+
+    closeSearch() {
+      this.showSearch = false;
+      this.activeIntegration = null;
+      this.searchResult = null;
+    },
+
+    _tagsArray() {
+      return (this.importOpts.tags_text || '')
+        .split(',').map(s => s.trim()).filter(Boolean);
+    },
+
+    async runPreview() {
+      if (!this.activeIntegration) return;
+      this.busy = true;
+      try {
+        const r = await api.post(`/api/integrations/${this.activeIntegration.id}/import`, {
+          params: this.searchParams,
+          list_id: this.importOpts.list_id || undefined,
+          tags: this._tagsArray(),
+          dry_run: true,
+        });
+        this.searchResult = r;
+        toast(`Preview: ${r.total_results || r.total} found, ${r.imported} new`);
+      } catch (e) {
+      } finally { this.busy = false; }
+    },
+
+    async runImport() {
+      if (!this.activeIntegration) return;
+      if (!confirm('Import these contacts into your database?')) return;
+      this.busy = true;
+      try {
+        const r = await api.post(`/api/integrations/${this.activeIntegration.id}/import`, {
+          params: this.searchParams,
+          list_id: this.importOpts.list_id || undefined,
+          tags: this._tagsArray(),
+          dry_run: false,
+        });
+        this.searchResult = r;
+        toast(`Imported ${r.imported} new contacts (${r.skipped} skipped)`);
+        this.load();
+      } catch (e) {
+      } finally { this.busy = false; }
+    },
+
+    async openLogs(i) {
+      this.activeIntegration = i;
+      this.showLogs = true;
+      try {
+        const r = await api.get(`/api/integrations/${i.id}/logs`);
+        this.logs = r.logs || [];
+      } catch (e) { this.logs = []; }
+    },
+  };
+}
+</script>
