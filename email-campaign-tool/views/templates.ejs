@@ -56,12 +56,17 @@
           </div>
           <div class="col-span-2"><input type="text" x-model="form.subject" placeholder="Subject Line (use {{first_name}} for variables)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
           <div class="col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">HTML Content</label>
-            <textarea x-model="form.html_content" rows="12" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"></textarea>
-          </div>
-          <div class="col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Plain Text Version</label>
-            <textarea x-model="form.text_content" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"></textarea>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Email Body</label>
+            <p class="text-xs text-gray-400 mb-1">Write your email in plain text. Use <code class="bg-gray-100 px-1 rounded">{{first_name}}</code>, <code class="bg-gray-100 px-1 rounded">{{company}}</code>, <code class="bg-gray-100 px-1 rounded">{{title}}</code> for personalization.</p>
+            <textarea x-model="form.text_content" rows="12" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Hi {{first_name}},
+
+I noticed {{company}} might benefit from...
+
+Would love to connect.
+
+Best,
+Your Name"></textarea>
           </div>
         </div>
         <div class="flex justify-end gap-3 mt-6">
@@ -88,7 +93,7 @@
 function templatesApp() {
   return {
     templates: [], showCreate: false, showPreview: false, editingId: null, categoryFilter: '', previewHtml: '',
-    form: { name: '', subject: '', html_content: '', text_content: '', category: 'general' },
+    form: { name: '', subject: '', text_content: '', category: 'general' },
 
     async load() {
       const params = new URLSearchParams({ category: this.categoryFilter });
@@ -99,7 +104,7 @@ function templatesApp() {
     async editTemplate(t) {
       const data = await api.get(`/api/templates/${t.id}`);
       this.editingId = t.id;
-      this.form = { name: data.template.name, subject: data.template.subject, html_content: data.template.html_content, text_content: data.template.text_content, category: data.template.category };
+      this.form = { name: data.template.name, subject: data.template.subject, text_content: data.template.text_content || data.template.html_content, category: data.template.category };
       this.showCreate = true;
     },
 
@@ -114,7 +119,7 @@ function templatesApp() {
         }
         this.showCreate = false;
         this.editingId = null;
-        this.form = { name: '', subject: '', html_content: '', text_content: '', category: 'general' };
+        this.form = { name: '', subject: '', text_content: '', category: 'general' };
         this.load();
       } catch (e) {}
     },

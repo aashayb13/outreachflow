@@ -97,8 +97,13 @@ function buildEmail(campaign, contact, template) {
     unsubscribe_link: generateUnsubscribeLink(contact.id, campaign.id),
   };
 
-  let html = renderTemplate(template.html_content || campaign.html_content, variables);
-  let text = renderTemplate(template.text_content || campaign.text_content, variables);
+  let rawHtml = template.html_content || campaign.html_content;
+  let rawText = template.text_content || campaign.text_content;
+  // Auto-convert plain text to HTML if no HTML content exists
+  if (rawText && !rawHtml) rawHtml = plainTextToHtml(rawText);
+
+  let html = renderTemplate(rawHtml, variables);
+  let text = renderTemplate(rawText, variables);
   let subject = renderTemplate(campaign.subject || template.subject, variables);
 
   // Add UTM parameters
@@ -126,6 +131,32 @@ function buildEmail(campaign, contact, template) {
   return { subject, html, text };
 }
 
+/**
+ * Convert plain text to simple HTML email.
+ * - Wraps in basic HTML structure
+ * - Converts line breaks to <br>
+ * - Auto-links URLs
+ * - Appends unsubscribe placeholder
+ */
+function plainTextToHtml(text) {
+  if (!text || !text.trim()) return '';
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#3B82F6;">$1</a>')
+    .replace(/\n/g, '<br>\n');
+
+  return `<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">
+${html}
+<br><br>
+<p style="font-size:12px;color:#9CA3AF;">{{unsubscribe_link}}</p>
+</body>
+</html>`;
+}
+
 module.exports = {
   renderTemplate,
   injectOpenTracker,
@@ -133,4 +164,5 @@ module.exports = {
   addUtmParams,
   generateUnsubscribeLink,
   buildEmail,
+  plainTextToHtml,
 };

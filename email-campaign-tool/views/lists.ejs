@@ -1,34 +1,134 @@
 
 
 <div x-data="listsApp()" x-init="load()">
-  <div class="flex items-center justify-between mb-6">
-    <p class="text-sm text-gray-500" x-text="lists.length + ' lists'"></p>
-    <button @click="showCreate = true" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
-      <i class="fas fa-plus mr-1"></i> New List
-    </button>
-  </div>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <template x-for="l in lists" :key="l.id">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold text-gray-800" x-text="l.name"></h3>
-          <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500" x-text="l.type"></span>
-        </div>
-        <p class="text-sm text-gray-500 mb-3" x-text="l.description || 'No description'"></p>
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-medium text-blue-600" x-text="l.contact_count + ' contacts'"></span>
-          <div class="flex gap-2">
-            <button @click="manageContacts(l)" class="text-gray-400 hover:text-blue-500" title="Manage contacts"><i class="fas fa-users"></i></button>
-            <button @click="editList(l)" class="text-gray-400 hover:text-blue-500" title="Edit list"><i class="fas fa-edit"></i></button>
-            <button @click="deleteList(l.id)" class="text-gray-400 hover:text-red-500" title="Delete list"><i class="fas fa-trash"></i></button>
+  <!-- ───────── LIST GRID (shown when no list is selected) ───────── -->
+  <div x-show="!activeList">
+    <div class="flex items-center justify-between mb-6">
+      <p class="text-sm text-gray-500" x-text="lists.length + ' lists'"></p>
+      <button @click="showCreate = true" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
+        <i class="fas fa-plus mr-1"></i> New List
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <template x-for="l in lists" :key="l.id">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition cursor-pointer" @click="openList(l)">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold text-gray-800" x-text="l.name"></h3>
+            <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500" x-text="l.type"></span>
+          </div>
+          <p class="text-sm text-gray-500 mb-3" x-text="l.description || 'No description'"></p>
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium text-blue-600" x-text="l.contact_count + ' contacts'"></span>
+            <div class="flex gap-2" @click.stop>
+              <button @click="manageContacts(l)" class="text-gray-400 hover:text-blue-500" title="Manage contacts"><i class="fas fa-users"></i></button>
+              <button @click="editList(l)" class="text-gray-400 hover:text-blue-500" title="Edit list"><i class="fas fa-edit"></i></button>
+              <button @click="deleteList(l.id)" class="text-gray-400 hover:text-red-500" title="Delete list"><i class="fas fa-trash"></i></button>
+            </div>
           </div>
         </div>
-      </div>
-    </template>
+      </template>
+    </div>
   </div>
 
-  <!-- Create/Edit Modal -->
+  <!-- ───────── LIST DETAIL VIEW ───────── -->
+  <div x-show="activeList" x-cloak>
+    <div class="flex items-center gap-3 mb-6">
+      <button @click="closeDetail()" class="text-gray-400 hover:text-gray-600">
+        <i class="fas fa-arrow-left text-lg"></i>
+      </button>
+      <div class="flex-1">
+        <h2 class="text-xl font-semibold text-gray-800" x-text="activeList?.name"></h2>
+        <p class="text-sm text-gray-500" x-text="activeList?.description || 'No description'"></p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-500" x-text="detailPagination.total + ' contacts'"></span>
+        <button @click="openApolloSearch()" x-show="apolloIntegration"
+          class="bg-purple-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-purple-600">
+          <i class="fas fa-search mr-1"></i> Apollo Search
+        </button>
+        <button @click="manageContacts(activeList)" class="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-200">
+          <i class="fas fa-user-plus mr-1"></i> Add/Remove
+        </button>
+        <button @click="openCreateCampaign()" x-show="detailPagination.total > 0"
+          class="bg-blue-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-600">
+          <i class="fas fa-paper-plane mr-1"></i> Send Campaign
+        </button>
+      </div>
+    </div>
+
+    <!-- Search bar -->
+    <div class="mb-4">
+      <input type="text" x-model="detailSearch" @input.debounce.300ms="loadDetail(1)"
+        placeholder="Search contacts in this list..."
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+    </div>
+
+    <!-- Contacts table -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Email</th>
+              <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Name</th>
+              <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Title</th>
+              <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Company</th>
+              <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Location</th>
+              <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th class="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Phone</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <template x-for="c in detailContacts" :key="c.id">
+              <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-gray-700 font-mono text-xs" x-text="c.email"></td>
+                <td class="px-4 py-3 text-gray-700" x-text="(c.first_name + ' ' + c.last_name).trim() || '-'"></td>
+                <td class="px-4 py-3 text-gray-600" x-text="c.title || '-'"></td>
+                <td class="px-4 py-3 text-gray-600" x-text="c.company || '-'"></td>
+                <td class="px-4 py-3 text-gray-500 text-xs" x-text="[c.city, c.state, c.country].filter(Boolean).join(', ') || '-'"></td>
+                <td class="px-4 py-3">
+                  <span class="text-xs px-2 py-0.5 rounded-full"
+                    :class="{
+                      'bg-green-100 text-green-700': c.status === 'active',
+                      'bg-red-100 text-red-700': c.status === 'bounced' || c.status === 'complained',
+                      'bg-yellow-100 text-yellow-700': c.status === 'unsubscribed',
+                      'bg-gray-100 text-gray-600': c.status === 'suppressed'
+                    }"
+                    x-text="c.status"></span>
+                </td>
+                <td class="px-4 py-3 text-gray-500 text-xs" x-text="c.phone || '-'"></td>
+              </tr>
+            </template>
+            <tr x-show="detailContacts.length === 0">
+              <td colspan="7" class="px-4 py-8 text-center text-gray-400">No contacts in this list yet. Use "Apollo Search" or "Add/Remove" to add contacts.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div x-show="detailPagination.pages > 1" class="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+        <p class="text-xs text-gray-500">
+          Page <span x-text="detailPagination.page"></span> of <span x-text="detailPagination.pages"></span>
+          (<span x-text="detailPagination.total"></span> total)
+        </p>
+        <div class="flex gap-2">
+          <button @click="loadDetail(detailPagination.page - 1)" :disabled="detailPagination.page <= 1"
+            class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
+            <i class="fas fa-chevron-left"></i> Prev
+          </button>
+          <button @click="loadDetail(detailPagination.page + 1)" :disabled="detailPagination.page >= detailPagination.pages"
+            class="px-3 py-1 text-xs rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
+            Next <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Create/Edit Modal ───────── -->
   <div x-show="showCreate" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showCreate = false">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
       <h3 class="text-lg font-semibold mb-4" x-text="editingId ? 'Edit List' : 'New List'"></h3>
@@ -45,14 +145,14 @@
     </div>
   </div>
 
-  <!-- Manage Contacts Modal -->
-  <div x-show="showManage" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showManage = false">
+  <!-- ───────── Manage Contacts Modal ───────── -->
+  <div x-show="showManage" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="closeManage()">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 max-h-[80vh] flex flex-col">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold">
           Contacts in <span x-text="manageList?.name"></span>
         </h3>
-        <button @click="showManage = false" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+        <button @click="closeManage()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
       </div>
 
       <input type="text" x-model="contactSearch" @input.debounce.300ms="loadAllContacts()"
@@ -93,10 +193,165 @@
         <p class="text-sm text-gray-500">
           <span x-text="memberIds.size"></span> selected
         </p>
-        <button @click="showManage = false" class="bg-blue-500 text-white px-6 py-2 rounded-lg text-sm">Done</button>
+        <button @click="closeManage()" class="bg-blue-500 text-white px-6 py-2 rounded-lg text-sm">Done</button>
       </div>
     </div>
   </div>
+
+  <!-- ───────── Apollo Search Modal (in Lists tab) ───────── -->
+  <div x-show="showApollo" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto" @click.self="showApollo = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 my-8 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-lg font-semibold">
+            <i class="fas fa-search text-purple-500 mr-2"></i>Apollo Search
+          </h3>
+          <p class="text-xs text-gray-500 mt-1">
+            Import directly into: <span class="font-semibold text-purple-600" x-text="activeList?.name"></span>
+          </p>
+        </div>
+        <button @click="showApollo = false" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+      </div>
+
+      <form @submit.prevent="apolloPreview()">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <template x-for="field in apolloSearchFields" :key="field.key">
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1" x-text="field.label"></label>
+              <input :type="field.type || 'text'" x-model="apolloParams[field.key]"
+                     :placeholder="field.placeholder || ''"
+                     class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </template>
+        </div>
+
+        <div class="border-t mt-4 pt-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Tags (comma-separated, optional)</label>
+            <input type="text" x-model="apolloTags" placeholder="e.g. apollo, field-services" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 mt-4">
+          <button type="submit" :disabled="apolloBusy" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-200">
+            <i class="fas fa-eye mr-1"></i>Preview
+          </button>
+          <button type="button" @click="apolloImport()" :disabled="apolloBusy" class="bg-purple-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-600">
+            <i class="fas fa-download mr-1"></i>Import to List
+          </button>
+        </div>
+      </form>
+
+      <!-- Results -->
+      <div x-show="apolloResult" class="mt-6 border-t pt-4">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="text-sm font-semibold text-gray-700">Results</h4>
+          <div class="text-xs text-gray-500">
+            <span x-text="(apolloResult?.imported || 0) + ' new'"></span> ·
+            <span x-text="(apolloResult?.skipped || 0) + ' skipped'"></span> ·
+            <span x-text="'total ' + (apolloResult?.total || 0)"></span>
+          </div>
+        </div>
+        <div class="overflow-x-auto" x-show="(apolloResult?.preview || []).length > 0">
+          <table class="w-full text-xs">
+            <thead class="bg-gray-50 text-gray-600">
+              <tr>
+                <th class="text-left px-2 py-1">Email</th>
+                <th class="text-left px-2 py-1">Name</th>
+                <th class="text-left px-2 py-1">Title</th>
+                <th class="text-left px-2 py-1">Company</th>
+                <th class="text-left px-2 py-1">Location</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(c, idx) in apolloResult?.preview || []" :key="idx">
+                <tr class="border-t border-gray-100">
+                  <td class="px-2 py-1 font-mono" x-text="c.email"></td>
+                  <td class="px-2 py-1" x-text="(c.first_name + ' ' + c.last_name).trim()"></td>
+                  <td class="px-2 py-1" x-text="c.title"></td>
+                  <td class="px-2 py-1" x-text="c.company"></td>
+                  <td class="px-2 py-1" x-text="[c.city, c.state, c.country].filter(Boolean).join(', ')"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <template x-if="(apolloResult?.errors || []).length > 0">
+          <div class="mt-3 text-xs text-red-500">
+            <div class="font-semibold mb-1">Issues:</div>
+            <ul class="list-disc list-inside">
+              <template x-for="(e, i) in apolloResult.errors" :key="i"><li x-text="e"></li></template>
+            </ul>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Create Campaign Modal (from list) ───────── -->
+  <div x-show="showCampaign" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto" @click.self="showCampaign = false">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 my-8 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-lg font-semibold"><i class="fas fa-paper-plane text-blue-500 mr-2"></i>Send Campaign</h3>
+          <p class="text-xs text-gray-500 mt-1">
+            Sending to: <span class="font-semibold text-blue-600" x-text="activeList?.name"></span>
+            (<span x-text="detailPagination.total"></span> contacts)
+          </p>
+        </div>
+        <button @click="showCampaign = false" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+      </div>
+
+      <form @submit.prevent="createAndSendCampaign()">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Campaign Name</label>
+            <input type="text" x-model="campaignForm.name" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Subject Line</label>
+            <input type="text" x-model="campaignForm.subject" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Use {{first_name}} for personalization" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">From Name</label>
+            <input type="text" x-model="campaignForm.from_name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Reply To</label>
+            <input type="email" x-model="campaignForm.reply_to" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Template</label>
+            <select x-model="campaignForm.template_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">None (custom HTML below)</option>
+              <template x-for="t in templates" :key="t.id">
+                <option :value="t.id" x-text="t.name + (t.subject ? ' — ' + t.subject : '')"></option>
+              </template>
+            </select>
+          </div>
+          <div class="col-span-2" x-show="!campaignForm.template_id">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Email Body</label>
+            <p class="text-xs text-gray-400 mb-1">Write in plain text. Use <code class="bg-gray-100 px-1 rounded">{{first_name}}</code>, <code class="bg-gray-100 px-1 rounded">{{company}}</code> for personalization.</p>
+            <textarea x-model="campaignForm.text_content" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Hi {{first_name}},
+
+I wanted to reach out about..."></textarea>
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 mt-6">
+          <button type="button" @click="showCampaign = false" class="px-4 py-2 text-sm text-gray-600">Cancel</button>
+          <button type="submit" name="action" value="draft" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-300">
+            Save as Draft
+          </button>
+          <button type="button" @click="createAndSendCampaign(true)" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600">
+            <i class="fas fa-paper-plane mr-1"></i> Create & Send Now
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -105,6 +360,12 @@ function listsApp() {
     lists: [], showCreate: false, editingId: null,
     form: { name: '', description: '' },
 
+    // List detail state
+    activeList: null,
+    detailContacts: [],
+    detailSearch: '',
+    detailPagination: { total: 0, page: 1, pages: 1, limit: 50 },
+
     // Manage-contacts modal state
     showManage: false,
     manageList: null,
@@ -112,10 +373,69 @@ function listsApp() {
     memberIds: new Set(),
     contactSearch: '',
 
+    // Apollo search state
+    apolloIntegration: null,
+    apolloSearchFields: [],
+    showApollo: false,
+    apolloParams: {},
+    apolloTags: '',
+    apolloResult: null,
+    apolloBusy: false,
+
+    // Campaign creation state
+    showCampaign: false,
+    templates: [],
+    campaignForm: { name: '', subject: '', from_name: '', reply_to: '', template_id: '', text_content: '' },
+
     async load() {
-      const data = await api.get('/api/lists');
-      this.lists = data.lists;
+      const [listsData, intData, provData, tplData] = await Promise.all([
+        api.get('/api/lists'),
+        api.get('/api/integrations').catch(() => ({ integrations: [] })),
+        api.get('/api/integrations/providers').catch(() => ({ providers: [] })),
+        api.get('/api/templates').catch(() => ({ templates: [] })),
+      ]);
+      this.lists = listsData.lists;
+      this.templates = tplData.templates || [];
+
+      // Find the first active Apollo integration
+      const integrations = intData.integrations || [];
+      this.apolloIntegration = integrations.find(i => i.provider === 'apollo' && i.is_active) || null;
+
+      // Get Apollo search fields from provider metadata
+      const providers = provData.providers || [];
+      const apolloProvider = providers.find(p => p.id === 'apollo');
+      this.apolloSearchFields = apolloProvider?.search_fields || [];
     },
+
+    // ── List detail ──
+
+    async openList(l) {
+      this.activeList = l;
+      this.detailSearch = '';
+      await this.loadDetail(1);
+    },
+
+    async loadDetail(page) {
+      if (!this.activeList) return;
+      try {
+        const p = Math.max(1, page || 1);
+        const params = new URLSearchParams({ page: p, limit: 50 });
+        if (this.detailSearch) params.set('search', this.detailSearch);
+        const data = await api.get(`/api/lists/${this.activeList.id}?${params}`);
+        this.detailContacts = data.contacts || [];
+        this.detailPagination = data.pagination || { total: 0, page: 1, pages: 1, limit: 50 };
+        if (data.list) this.activeList = { ...this.activeList, ...data.list };
+      } catch (e) {}
+    },
+
+    closeDetail() {
+      this.activeList = null;
+      this.detailContacts = [];
+      this.detailSearch = '';
+      this.load();
+    },
+
+    // ── CRUD ──
 
     editList(l) {
       this.editingId = l.id;
@@ -144,12 +464,13 @@ function listsApp() {
       try { await api.del(`/api/lists/${id}`); toast('List deleted'); this.load(); } catch (e) {}
     },
 
+    // ── Manage contacts modal ──
+
     async manageContacts(l) {
       this.manageList = l;
       this.showManage = true;
       this.contactSearch = '';
       this.memberIds = new Set();
-      // Load list members + all contacts in parallel
       const [listData, _] = await Promise.all([
         api.get(`/api/lists/${l.id}?limit=10000`),
         this.loadAllContacts(),
@@ -157,10 +478,20 @@ function listsApp() {
       this.memberIds = new Set((listData.contacts || []).map(c => c.id));
     },
 
+    closeManage() {
+      this.showManage = false;
+      if (this.activeList && this.manageList && this.activeList.id === this.manageList.id) {
+        this.loadDetail(this.detailPagination.page);
+      }
+      this.load();
+    },
+
     async loadAllContacts() {
-      const params = new URLSearchParams({ limit: 200, search: this.contactSearch || '' });
-      const data = await api.get('/api/contacts?' + params);
-      this.allContacts = data.contacts;
+      try {
+        const params = new URLSearchParams({ limit: 200, search: this.contactSearch || '' });
+        const data = await api.get('/api/contacts?' + params);
+        this.allContacts = data.contacts;
+      } catch (e) { this.allContacts = []; }
     },
 
     async toggleContact(contactId, checked) {
@@ -172,12 +503,116 @@ function listsApp() {
           await api.del(`/api/lists/${this.manageList.id}/contacts`, { contact_ids: [contactId] });
           this.memberIds.delete(contactId);
         }
-        // Update the count badge on the card without a full reload
         const idx = this.lists.findIndex(x => x.id === this.manageList.id);
         if (idx >= 0) this.lists[idx].contact_count = this.memberIds.size;
       } catch (e) {
         toast('Failed to update list', 'error');
       }
+    },
+
+    // ── Apollo search (in lists tab) ──
+
+    openApolloSearch() {
+      if (!this.apolloIntegration) {
+        toast('No active Apollo integration found. Set one up in the Integrations tab first.', 'error');
+        return;
+      }
+      this.apolloParams = {};
+      // Pre-fill defaults from search field definitions
+      for (const f of this.apolloSearchFields) {
+        if (f.default !== undefined) this.apolloParams[f.key] = f.default;
+      }
+      this.apolloTags = '';
+      this.apolloResult = null;
+      this.showApollo = true;
+    },
+
+    _apolloTagsArray() {
+      return (this.apolloTags || '').split(',').map(s => s.trim()).filter(Boolean);
+    },
+
+    async apolloPreview() {
+      if (!this.apolloIntegration || !this.activeList) return;
+      this.apolloBusy = true;
+      try {
+        const r = await api.post(`/api/integrations/${this.apolloIntegration.id}/import`, {
+          params: this.apolloParams,
+          list_id: this.activeList.id,
+          tags: this._apolloTagsArray(),
+          dry_run: true,
+        });
+        this.apolloResult = r;
+        toast(`Preview: ${r.total_results || r.total} found, ${r.imported} new`);
+      } catch (e) {
+      } finally { this.apolloBusy = false; }
+    },
+
+    async apolloImport() {
+      if (!this.apolloIntegration || !this.activeList) return;
+      if (!confirm(`Import contacts into "${this.activeList.name}"?`)) return;
+      this.apolloBusy = true;
+      try {
+        const r = await api.post(`/api/integrations/${this.apolloIntegration.id}/import`, {
+          params: this.apolloParams,
+          list_id: this.activeList.id,
+          tags: this._apolloTagsArray(),
+          dry_run: false,
+        });
+        this.apolloResult = r;
+        toast(`Imported ${r.imported} contacts into "${this.activeList.name}" (${r.skipped} skipped)`);
+        // Refresh the list detail to show new contacts
+        this.loadDetail(1);
+        this.load();
+      } catch (e) {
+      } finally { this.apolloBusy = false; }
+    },
+
+    // ── Campaign creation from list ──
+
+    async openCreateCampaign() {
+      if (!this.activeList) return;
+      this.campaignForm = {
+        name: this.activeList.name + ' Campaign',
+        subject: '',
+        from_name: '',
+        reply_to: '',
+        template_id: '',
+        text_content: '',
+      };
+      this.showCampaign = true;
+    },
+
+    async createAndSendCampaign(sendNow = false) {
+      if (!this.activeList) return;
+      if (!this.campaignForm.name || !this.campaignForm.subject) {
+        toast('Campaign name and subject line are required', 'error');
+        return;
+      }
+      if (sendNow && !confirm(`Send this campaign to ${this.detailPagination.total} contacts now?`)) return;
+
+      try {
+        const payload = {
+          name: this.campaignForm.name,
+          subject: this.campaignForm.subject,
+          from_name: this.campaignForm.from_name,
+          reply_to: this.campaignForm.reply_to,
+          list_ids: [this.activeList.id],
+          template_id: this.campaignForm.template_id ? parseInt(this.campaignForm.template_id) : undefined,
+          text_content: this.campaignForm.text_content,
+        };
+
+        const created = await api.post('/api/campaigns', payload);
+        const campaignId = created.campaign?.id;
+
+        if (sendNow && campaignId) {
+          await api.post(`/api/campaigns/${campaignId}/send`);
+          toast(`Campaign created and sending to ${this.detailPagination.total} contacts!`);
+        } else {
+          toast('Campaign saved as draft. Go to Campaigns to send it.');
+        }
+
+        this.showCampaign = false;
+      } catch (e) {}
     },
   };
 }

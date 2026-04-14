@@ -121,8 +121,12 @@
             </select>
           </div>
           <div class="col-span-2">
-            <label class="block text-sm font-medium text-gray-700 mb-1">HTML Content (if no template)</label>
-            <textarea x-model="form.html_content" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono" placeholder="<html>...</html>"></textarea>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Email Body (if no template)</label>
+            <p class="text-xs text-gray-400 mb-1">Write in plain text. Use <code class="bg-gray-100 px-1 rounded">{{first_name}}</code>, <code class="bg-gray-100 px-1 rounded">{{company}}</code> for personalization.</p>
+            <textarea x-model="form.text_content" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="Hi {{first_name}},
+
+I wanted to reach out about..."></textarea>
           </div>
         </div>
         <div class="flex items-center justify-end gap-3 mt-6">
@@ -145,7 +149,7 @@ function campaignsApp() {
     showCreate: false,
     templates: [],
     lists: [],
-    form: { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', html_content: '' },
+    form: { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', text_content: '' },
 
     async loadCampaigns() {
       const params = new URLSearchParams({ page: this.page, status: this.filter, search: this.search });

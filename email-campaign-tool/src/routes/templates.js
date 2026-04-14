@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/connection');
 const { authenticate, requirePermission } = require('../middleware/auth');
-const { renderTemplate } = require('../services/templateEngine');
+const { renderTemplate, plainTextToHtml } = require('../services/templateEngine');
 
 router.use(authenticate);
 
@@ -49,8 +49,13 @@ router.post('/:id/preview', async (req, res, next) => {
 router.post('/', requirePermission('write'), async (req, res, next) => {
   try {
     const db = getDb();
-    const { name, subject, html_content, text_content, category, variables } = req.body;
+    let { name, subject, html_content, text_content, category, variables } = req.body;
     if (!name) return res.status(400).json({ error: 'Template name is required' });
+
+    // Auto-convert plain text body to HTML if no HTML tags detected
+    if (text_content && (!html_content || !html_content.trim())) {
+      html_content = plainTextToHtml(text_content);
+    }
 
     const result = await db.prepare(`
       INSERT INTO templates (name, subject, html_content, text_content, category, variables)
@@ -65,6 +70,10 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
 router.put('/:id', requirePermission('write'), async (req, res, next) => {
   try {
     const db = getDb();
+    // Auto-convert plain text to HTML if text_content provided but html_content is empty
+    if (req.body.text_content && (!req.body.html_content || !req.body.html_content.trim())) {
+      req.body.html_content = plainTextToHtml(req.body.text_content);
+    }
     const fields = ['name', 'subject', 'html_content', 'text_content', 'category', 'is_active'];
     const updates = [];
     const values = [];

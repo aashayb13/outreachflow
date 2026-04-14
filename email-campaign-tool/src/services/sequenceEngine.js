@@ -1,6 +1,6 @@
 const { getDb } = require('../db/connection');
 const { sendEmail } = require('./mailer');
-const { renderTemplate } = require('./templateEngine');
+const { renderTemplate, plainTextToHtml } = require('./templateEngine');
 const { fireWebhooks } = require('./webhookService');
 const config = require('../config');
 const logger = require('../utils/logger');
@@ -99,6 +99,8 @@ async function processEnrollmentStep(enrollment) {
     case 'email': {
       let html = step.html_content;
       let text = step.text_content;
+      // Auto-convert plain text to HTML if needed
+      if (text && !html) html = plainTextToHtml(text);
       let subject = step.subject;
 
       if (step.template_id) {

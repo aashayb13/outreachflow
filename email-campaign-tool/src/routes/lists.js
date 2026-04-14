@@ -22,17 +22,27 @@ router.get('/:id', async (req, res, next) => {
     const list = await db.prepare('SELECT * FROM lists WHERE id = ?').get(req.params.id);
     if (!list) return res.status(404).json({ error: 'List not found' });
 
-    const { page = 1, limit = 50 } = req.query;
+    const { page = 1, limit = 50, search = '' } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const totalRow = await db.prepare('SELECT COUNT(*) as count FROM list_contacts WHERE list_id = ?').get(list.id);
+    const searchFilter = search.trim();
+    const hasSearch = searchFilter.length > 0;
+    const searchPattern = `%${searchFilter}%`;
+
+    const countSql = hasSearch
+      ? `SELECT COUNT(*) as count FROM contacts c JOIN list_contacts lc ON lc.contact_id = c.id WHERE lc.list_id = ? AND (c.email LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR c.company LIKE ?)`
+      : `SELECT COUNT(*) as count FROM list_contacts WHERE list_id = ?`;
+    const countArgs = hasSearch ? [list.id, searchPattern, searchPattern, searchPattern, searchPattern] : [list.id];
+    const totalRow = await db.prepare(countSql).get(...countArgs);
     const total = parseInt(totalRow.count, 10);
-    const contacts = await db.prepare(`
-      SELECT c.* FROM contacts c
-      JOIN list_contacts lc ON lc.contact_id = c.id
-      WHERE lc.list_id = ?
-      ORDER BY lc.added_at DESC LIMIT ? OFFSET ?
-    `).all(list.id, parseInt(limit), offset);
+
+    const selectSql = hasSearch
+      ? `SELECT c.* FROM contacts c JOIN list_contacts lc ON lc.contact_id = c.id WHERE lc.list_id = ? AND (c.email LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR c.company LIKE ?) ORDER BY lc.added_at DESC LIMIT ? OFFSET ?`
+      : `SELECT c.* FROM contacts c JOIN list_contacts lc ON lc.contact_id = c.id WHERE lc.list_id = ? ORDER BY lc.added_at DESC LIMIT ? OFFSET ?`;
+    const selectArgs = hasSearch
+      ? [list.id, searchPattern, searchPattern, searchPattern, searchPattern, parseInt(limit), offset]
+      : [list.id, parseInt(limit), offset];
+    const contacts = await db.prepare(selectSql).all(...selectArgs);
 
     res.json({
       list: { ...list, contact_count: total },

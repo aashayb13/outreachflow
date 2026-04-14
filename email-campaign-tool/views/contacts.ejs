@@ -1,6 +1,6 @@
 
 
-<div x-data="contactsApp()" x-init="load()">
+<div x-data="contactsApp()" x-init="load(); init()">
   <div class="flex items-center justify-between mb-6">
     <div class="flex items-center gap-3">
       <input type="text" x-model="search" @input.debounce.300ms="load()" placeholder="Search contacts..." class="text-sm border border-gray-300 rounded-lg px-3 py-2 w-64" />
@@ -9,6 +9,12 @@
         <option value="active">Active</option>
         <option value="unsubscribed">Unsubscribed</option>
         <option value="bounced">Bounced</option>
+      </select>
+      <select x-model="listFilter" @change="load()" class="text-sm border border-gray-300 rounded-lg px-3 py-2">
+        <option value="">All Lists</option>
+        <template x-for="l in lists" :key="l.id">
+          <option :value="l.id" x-text="l.name"></option>
+        </template>
       </select>
     </div>
     <div class="flex items-center gap-2">
@@ -24,10 +30,35 @@
     </div>
   </div>
 
+  <!-- Bulk actions bar -->
+  <div x-show="selected.size > 0" x-cloak class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+    <span class="text-sm font-medium text-blue-700">
+      <span x-text="selected.size"></span> contact(s) selected
+    </span>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
+        <select x-model="bulkListId" class="text-sm border border-gray-300 rounded-lg px-2 py-1">
+          <option value="">Choose list...</option>
+          <template x-for="l in lists" :key="l.id">
+            <option :value="l.id" x-text="l.name"></option>
+          </template>
+        </select>
+        <button @click="bulkAddToList()" :disabled="!bulkListId"
+          class="text-xs bg-blue-500 text-white px-3 py-1.5 rounded hover:bg-blue-600 disabled:opacity-40">
+          <i class="fas fa-list mr-1"></i> Add to List
+        </button>
+      </div>
+      <button @click="selected = new Set(); selectAll = false" class="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+    </div>
+  </div>
+
   <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
     <table class="w-full text-sm">
       <thead class="bg-gray-50">
         <tr>
+          <th class="px-3 py-3 w-10">
+            <input type="checkbox" :checked="selectAll" @change="toggleSelectAll()" />
+          </th>
           <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Contact</th>
           <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Company</th>
           <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase">Tags</th>
@@ -39,6 +70,9 @@
       <tbody class="divide-y divide-gray-100">
         <template x-for="c in contacts" :key="c.id">
           <tr class="hover:bg-gray-50">
+            <td class="px-3 py-3">
+              <input type="checkbox" :checked="selected.has(c.id)" @change="toggleSelect(c.id)" />
+            </td>
             <td class="px-5 py-3">
               <p class="font-medium text-gray-800" x-text="(c.first_name + ' ' + c.last_name).trim() || c.email"></p>
               <p class="text-xs text-gray-400" x-text="c.email"></p>
@@ -58,13 +92,14 @@
             </td>
             <td class="px-5 py-3 text-center text-gray-600" x-text="c.lead_score"></td>
             <td class="px-5 py-3 text-right">
+              <button @click="quickAddToList(c.id)" class="text-gray-400 hover:text-green-500 mr-1" title="Add to list"><i class="fas fa-list"></i></button>
               <button @click="editContact(c)" class="text-gray-400 hover:text-blue-500" title="Edit"><i class="fas fa-edit"></i></button>
-              <button @click="deleteContact(c.id)" class="text-gray-400 hover:text-red-500 ml-2" title="Delete"><i class="fas fa-trash"></i></button>
+              <button @click="deleteContact(c.id)" class="text-gray-400 hover:text-red-500 ml-1" title="Delete"><i class="fas fa-trash"></i></button>
             </td>
           </tr>
         </template>
         <tr x-show="contacts.length === 0">
-          <td colspan="6" class="px-5 py-8 text-center text-gray-400">No contacts found</td>
+          <td colspan="7" class="px-5 py-8 text-center text-gray-400">No contacts found</td>
         </tr>
       </tbody>
     </table>
@@ -78,8 +113,25 @@
     </div>
   </div>
 
+  <!-- Quick Add to List Modal -->
+  <div x-show="showQuickList" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showQuickList = false; quickAddContactId = null">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+      <h3 class="text-lg font-semibold mb-4">Add to List</h3>
+      <div class="space-y-2 max-h-64 overflow-y-auto">
+        <template x-for="l in lists" :key="l.id">
+          <button @click="confirmQuickAdd(l.id)" class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition">
+            <span class="font-medium text-gray-800" x-text="l.name"></span>
+            <span class="text-xs text-gray-400 ml-2" x-text="l.contact_count + ' contacts'"></span>
+          </button>
+        </template>
+        <p x-show="lists.length === 0" class="text-sm text-gray-400 text-center py-4">No lists yet. Create one in the Lists tab.</p>
+      </div>
+      <button @click="showQuickList = false" class="mt-4 w-full text-center text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+    </div>
+  </div>
+
   <!-- Create/Edit Modal -->
-  <div x-show="showCreate" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showCreate = false">
+  <div x-show="showCreate" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showCreate = false; editingId = null">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
       <h3 class="text-lg font-semibold mb-4" x-text="editingId ? 'Edit Contact' : 'Add Contact'"></h3>
       <form @submit.prevent="saveContact()">
@@ -140,12 +192,19 @@
 <script>
 function contactsApp() {
   return {
-    contacts: [], pagination: {}, page: 1, search: '', statusFilter: '',
-    showCreate: false, showImport: false, editingId: null, lists: [],
+    contacts: [], pagination: {}, page: 1, search: '', statusFilter: '', listFilter: '',
+    showCreate: false, showImport: false, showQuickList: false, editingId: null, lists: [],
     form: { email: '', first_name: '', last_name: '', company: '', title: '', phone: '', list_id: '' },
+
+    // Selection state
+    selected: new Set(),
+    selectAll: false,
+    bulkListId: '',
+    quickAddContactId: null,
 
     async load() {
       const params = new URLSearchParams({ page: this.page, search: this.search, status: this.statusFilter });
+      if (this.listFilter) params.set('list_id', this.listFilter);
       const data = await api.get('/api/contacts?' + params);
       this.contacts = data.contacts;
       this.pagination = data.pagination;
@@ -155,6 +214,63 @@ function contactsApp() {
         this.lists = lData.lists;
       }
     },
+
+    // ── Selection ──
+
+    toggleSelect(id) {
+      if (this.selected.has(id)) {
+        this.selected.delete(id);
+      } else {
+        this.selected.add(id);
+      }
+      // Force reactivity
+      this.selected = new Set(this.selected);
+      this.selectAll = this.selected.size === this.contacts.length;
+    },
+
+    toggleSelectAll() {
+      this.selectAll = !this.selectAll;
+      this.selected = this.selectAll ? new Set(this.contacts.map(c => c.id)) : new Set();
+    },
+
+    // ── Bulk add to list ──
+
+    async bulkAddToList() {
+      if (!this.bulkListId || this.selected.size === 0) return;
+      try {
+        const ids = Array.from(this.selected);
+        await api.post(`/api/lists/${this.bulkListId}/contacts`, { contact_ids: ids });
+        const listName = this.lists.find(l => l.id == this.bulkListId)?.name || 'list';
+        toast(`Added ${ids.length} contact(s) to "${listName}"`);
+        this.selected = new Set();
+        this.selectAll = false;
+        this.bulkListId = '';
+        // Refresh list counts
+        const lData = await api.get('/api/lists');
+        this.lists = lData.lists;
+      } catch (e) {}
+    },
+
+    // ── Quick add single contact to list ──
+
+    quickAddToList(contactId) {
+      this.quickAddContactId = contactId;
+      this.showQuickList = true;
+    },
+
+    async confirmQuickAdd(listId) {
+      try {
+        await api.post(`/api/lists/${listId}/contacts`, { contact_ids: [this.quickAddContactId] });
+        const listName = this.lists.find(l => l.id == listId)?.name || 'list';
+        toast(`Added to "${listName}"`);
+        this.showQuickList = false;
+        this.quickAddContactId = null;
+        const lData = await api.get('/api/lists');
+        this.lists = lData.lists;
+      } catch (e) {}
+    },
+
+    // ── CRUD ──
 
     editContact(c) {
       this.editingId = c.id;
@@ -178,7 +294,7 @@ function contactsApp() {
         this.editingId = null;
         this.form = { email: '', first_name: '', last_name: '', company: '', title: '', phone: '', list_id: '' };
         this.load();
-      } catch (e) { /* toast shown by api helper */ }
+      } catch (e) {}
     },
 
     async deleteContact(id) {

@@ -4,6 +4,7 @@ const { getDb } = require('../db/connection');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { populateRecipients, processCampaign, updateCampaignStats } = require('../services/sendQueue');
 const { fireWebhooks } = require('../services/webhookService');
+const { plainTextToHtml } = require('../services/templateEngine');
 const logger = require('../utils/logger');
 
 router.use(authenticate);
@@ -79,7 +80,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', requirePermission('write'), async (req, res, next) => {
   try {
     const db = getDb();
-    const {
+    let {
       name, subject, from_name, from_email, reply_to,
       template_id, html_content, text_content,
       type = 'regular', list_ids = [], exclude_list_ids = [],
@@ -89,6 +90,11 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
     } = req.body;
 
     if (!name) return res.status(400).json({ error: 'Campaign name is required' });
+
+    // Auto-convert plain text to HTML if text_content provided but html_content is empty
+    if (text_content && (!html_content || !html_content.trim())) {
+      html_content = plainTextToHtml(text_content);
+    }
 
     const result = await db.prepare(`
       INSERT INTO campaigns (

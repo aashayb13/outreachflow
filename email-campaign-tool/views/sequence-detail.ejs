@@ -46,7 +46,7 @@
           <!-- Email step -->
           <div x-show="step.type === 'email'" class="space-y-2">
             <input type="text" x-model="step.subject" placeholder="Subject line" class="w-full border rounded px-3 py-1.5 text-sm" />
-            <textarea x-model="step.html_content" placeholder="HTML content" rows="3" class="w-full border rounded px-3 py-1.5 text-sm font-mono"></textarea>
+            <textarea x-model="step.text_content" placeholder="Write your email here. Use {{first_name}}, {{company}} for personalization." rows="3" class="w-full border rounded px-3 py-1.5 text-sm"></textarea>
           </div>
           <!-- Delay step -->
           <div x-show="step.type === 'delay'" class="flex items-center gap-3">
