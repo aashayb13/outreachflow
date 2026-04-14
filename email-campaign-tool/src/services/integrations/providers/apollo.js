@@ -4,9 +4,14 @@
  * Docs: https://docs.apollo.io/reference/people-api-search
  *
  * Auth: x-api-key header
- * Endpoint: POST https://api.apollo.io/api/v1/mixed_people/api_search
+ *
+ * Flow:
+ *  1. POST /mixed_people/api_search  → returns people WITHOUT emails
+ *  2. POST /people/bulk_match        → enrich in batches of 10 to get emails
  *
  * Notes:
+ *  - Apollo's api_search endpoint does NOT return emails or phone numbers.
+ *    We must call bulk_match to enrich each person by their Apollo ID.
  *  - Apollo masks emails on free/lower plans (`email_status: 'unavailable'`).
  *    We surface only leads with a real email so we don't import junk.
  *  - Apollo's People Search is rate-limited per minute/hour/day. We do NOT
@@ -28,12 +33,12 @@ const meta = {
     { key: 'q_keywords', label: 'Keywords', type: 'text', placeholder: 'e.g. plumbing contractor' },
     { key: 'person_titles', label: 'Job Titles (comma-separated)', type: 'text',
       placeholder: 'Owner, CEO, General Manager' },
-    { key: 'organization_industries', label: 'Industries (comma-separated)', type: 'text',
-      placeholder: 'plumbing, hvac, electrical' },
-    { key: 'organization_locations', label: 'Locations (comma-separated)', type: 'text',
+    { key: 'person_locations', label: 'Person Locations (comma-separated)', type: 'text',
       placeholder: 'Texas, Florida, California' },
     { key: 'organization_num_employees_ranges', label: 'Employee Range', type: 'text',
       placeholder: '1,10  or  11,50' },
+    { key: 'person_seniorities', label: 'Seniority (comma-separated)', type: 'text',
+      placeholder: 'owner, founder, c_suite, vp, director, manager' },
     { key: 'page', label: 'Page', type: 'number', default: 1 },
     { key: 'per_page', label: 'Per Page (max 100)', type: 'number', default: 25 },
   ],
@@ -72,8 +77,36 @@ async function _request(creds, path, body) {
   return data;
 }
 
+/**
+ * Enrich people by Apollo ID in batches of 10 to get emails.
+ * Returns array of enriched person objects.
+ */
+async function _bulkEnrich(creds, people) {
+  if (!people.length) return [];
+
+  const enriched = [];
+  // Apollo bulk_match allows max 10 per request
+  for (let i = 0; i < people.length; i += 10) {
+    const batch = people.slice(i, i + 10);
+    const details = batch.map(p => ({ id: p.id }));
+
+    try {
+      const data = await _request(creds, '/people/bulk_match', {
+        details,
+        reveal_personal_emails: false,
+      });
+      const matches = Array.isArray(data?.matches) ? data.matches : [];
+      enriched.push(...matches);
+    } catch (err) {
+      // If enrichment fails for a batch, skip it but continue
+      console.warn(`Apollo bulk_match batch failed: ${err.message}`);
+    }
+  }
+  return enriched;
+}
+
 async function test(creds) {
-  // Lightweight call: search for 1 result.
+  // Lightweight call: search for 1 result to verify credentials work.
   const data = await _request(creds, '/mixed_people/api_search', { page: 1, per_page: 1 });
   return { ok: true, info: { total: data?.pagination?.total_entries ?? null } };
 }
@@ -87,35 +120,54 @@ async function search(creds, params = {}) {
   if (params.q_keywords) body.q_keywords = params.q_keywords;
   const titles = splitList(params.person_titles);
   if (titles) body.person_titles = titles;
-  const industries = splitList(params.organization_industries);
-  if (industries) body.organization_industries = industries;
-  const locations = splitList(params.organization_locations);
-  if (locations) body.organization_locations = locations;
+  const locations = splitList(params.person_locations);
+  if (locations) body.person_locations = locations;
+  const seniorities = splitList(params.person_seniorities);
+  if (seniorities) body.person_seniorities = seniorities;
   const ranges = splitList(params.organization_num_employees_ranges);
   if (ranges) body.organization_num_employees_ranges = ranges;
 
+  // Step 1: Search (returns people WITHOUT emails)
   const data = await _request(creds, '/mixed_people/api_search', body);
   const people = Array.isArray(data?.people) ? data.people : [];
 
+  if (!people.length) {
+    return { leads: [], pagination: data?.pagination || null, total: 0 };
+  }
+
+  // Step 2: Enrich in batches of 10 to get emails
+  const enrichedPeople = await _bulkEnrich(creds, people);
+
+  // Build a lookup map by Apollo ID for enriched data
+  const enrichedMap = new Map();
+  for (const ep of enrichedPeople) {
+    if (ep.id) enrichedMap.set(ep.id, ep);
+  }
+
+  // Merge: use search data as base, overlay email from enrichment
   const leads = people
-    .filter(p => p.email && p.email !== 'email_not_unlocked@domain.com')
-    .map(p => ({
-      email: p.email,
-      first_name: p.first_name || '',
-      last_name: p.last_name || '',
-      title: p.title || '',
-      company: p.organization?.name || '',
-      industry: p.organization?.industry || '',
-      city: p.city || '',
-      state: p.state || '',
-      country: p.country || '',
-      phone: p.organization?.phone || '',
-      custom_fields: {
-        apollo_id: p.id,
-        linkedin_url: p.linkedin_url || '',
-        organization_website: p.organization?.website_url || '',
-      },
-    }));
+    .map(p => {
+      const enriched = enrichedMap.get(p.id) || {};
+      const email = enriched.email || p.email || '';
+      return {
+        email,
+        first_name: p.first_name || '',
+        last_name: p.last_name || '',
+        title: p.title || '',
+        company: p.organization?.name || '',
+        industry: p.organization?.industry || '',
+        city: p.city || '',
+        state: p.state || '',
+        country: p.country || '',
+        phone: enriched.phone || p.organization?.phone || '',
+        custom_fields: {
+          apollo_id: p.id,
+          linkedin_url: p.linkedin_url || '',
+          organization_website: p.organization?.website_url || '',
+        },
+      };
+    })
+    .filter(l => l.email && l.email !== 'email_not_unlocked@domain.com');
 
   return {
     leads,
