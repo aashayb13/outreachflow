@@ -68,6 +68,18 @@ async function _request(creds, path, body) {
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text }; }
 
+  // Debug: log Apollo response keys so we can see the actual structure
+  const topKeys = data && typeof data === 'object' ? Object.keys(data) : [];
+  console.log(`[Apollo] ${path} → status=${res.status}, keys=[${topKeys.join(',')}]`);
+  if (data?.pagination) console.log(`[Apollo] pagination=${JSON.stringify(data.pagination)}`);
+  if (!data?.people && !data?.contacts && !data?.matches) {
+    // Log first 500 chars of response to see what we actually got
+    console.log(`[Apollo] response sample: ${JSON.stringify(data).slice(0, 500)}`);
+  } else {
+    const arr = data.people || data.contacts || data.matches || [];
+    console.log(`[Apollo] results count=${arr.length}, first person keys=${arr[0] ? Object.keys(arr[0]).join(',') : 'none'}`);
+  }
+
   if (!res.ok) {
     const msg = data?.error || data?.message || data?.errors || `Apollo error ${res.status}`;
     const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
@@ -128,6 +140,7 @@ async function search(creds, params = {}) {
   if (ranges) body.organization_num_employees_ranges = ranges;
 
   // Step 1: Search (returns people WITHOUT emails)
+  console.log(`[Apollo] search body: ${JSON.stringify(body)}`);
   const data = await _request(creds, '/mixed_people/api_search', body);
   const people = Array.isArray(data?.people) ? data.people : [];
 
