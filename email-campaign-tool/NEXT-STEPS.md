@@ -98,3 +98,71 @@ When you have Gmail App Password / Mailgun / SendGrid creds:
 | Cookies not setting | Old build, redeploy |
 
 Full troubleshooting in [DEPLOY.md](./DEPLOY.md#troubleshooting).
+
+
+Update Notes: 4/14/2026
+
+Step-by-Step Flow Using Your Tool Today                                                                                                                
+
+  1. Connect Apollo                                                                                                                                         
+  - Go to Integrations in the app                                                                                                                        
+  - Click Add Integration → select Apollo
+  - Paste your Apollo API key (from Apollo → Settings → Integrations → API)
+  - Click Test to verify it connects
+  - Save
+
+  2. Search Apollo for Contacts
+
+  - On your saved Apollo integration, click Search
+  - Fill in the search filters:
+    - Keywords — e.g. "plumbing contractor"
+    - Job Titles — e.g. "Owner, CEO, General Manager"
+    - Locations — e.g. "Texas"
+    - Industries — e.g. "Construction"
+    - Employee Range — e.g. "1,50"
+  - Run the search — you'll see a preview of matching contacts
+
+  3. Import Contacts
+
+  - From the search results, click Import
+  - Choose a List to assign them to (or create one first under Contacts → Lists)
+  - Optionally add Tags (e.g. "apollo-batch-1", "plumbing")
+  - You can dry run first to preview what will be imported
+  - Confirm the import — contacts land in your Contacts table
+
+  4. Build Your Campaign
+
+  - Go to Campaigns → Create Campaign
+  - Set your subject line, from name/email
+  - Pick or build a Template (with merge tags like {{first_name}}, {{company}})
+  - Under Recipients, select the List you imported the Apollo contacts into
+  - Optionally set an exclusion list
+
+  5. Send or Schedule
+
+  - Send now or Schedule for a specific date/time
+  - The send queue processes in batches (50 at a time, 5/sec, 2000/day cap)
+  - Track results in the campaign dashboard — opens, clicks, bounces, unsubscribes
+
+  ---
+  The Apollo List Workaround
+
+  Since the tool searches Apollo directly but can't browse your saved Apollo lists, you have two options:
+
+  Option A — Replicate your Apollo list criteria in the tool's search filters. If your Apollo list is "Plumbing Owners in Texas, 1-50 employees," just   
+  enter those same filters in the integration search. Same results.
+
+  Option B — CSV bridge. Build your list in Apollo's UI → Export CSV → Go to Contacts → Import CSV in your tool → assign to a list. Works immediately, no
+   code changes needed.
+
+  ---
+  Summary Flow
+
+  Login → Integrations → Apollo → Search (with filters)
+    → Import to a List
+    → Campaigns → New Campaign → Select that List
+    → Write email / pick template
+    → Send or Schedule
+    → Monitor opens/clicks/bounces
+
+  That's the full loop using what's already built. No code changes required.

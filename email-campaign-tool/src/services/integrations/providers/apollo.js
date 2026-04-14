@@ -1,10 +1,10 @@
 /**
  * Apollo.io adapter
  *
- * Docs: https://docs.apollo.io/reference/people-search
+ * Docs: https://docs.apollo.io/reference/people-api-search
  *
  * Auth: x-api-key header
- * Endpoint: POST https://api.apollo.io/api/v1/mixed_people/search
+ * Endpoint: POST https://api.apollo.io/api/v1/mixed_people/api_search
  *
  * Notes:
  *  - Apollo masks emails on free/lower plans (`email_status: 'unavailable'`).
@@ -19,7 +19,7 @@ const meta = {
   id: 'apollo',
   name: 'Apollo.io',
   description: 'B2B contact database with 275M+ contacts. Search by title, company, industry, location.',
-  docs_url: 'https://docs.apollo.io/reference/people-search',
+  docs_url: 'https://docs.apollo.io/reference/people-api-search',
   credential_fields: [
     { key: 'api_key', label: 'API Key', type: 'password', required: true,
       help: 'Get from Apollo Settings → Integrations → API' },
@@ -74,7 +74,7 @@ async function _request(creds, path, body) {
 
 async function test(creds) {
   // Lightweight call: search for 1 result.
-  const data = await _request(creds, '/mixed_people/search', { page: 1, per_page: 1 });
+  const data = await _request(creds, '/mixed_people/api_search', { page: 1, per_page: 1 });
   return { ok: true, info: { total: data?.pagination?.total_entries ?? null } };
 }
 
@@ -94,7 +94,7 @@ async function search(creds, params = {}) {
   const ranges = splitList(params.organization_num_employees_ranges);
   if (ranges) body.organization_num_employees_ranges = ranges;
 
-  const data = await _request(creds, '/mixed_people/search', body);
+  const data = await _request(creds, '/mixed_people/api_search', body);
   const people = Array.isArray(data?.people) ? data.people : [];
 
   const leads = people
