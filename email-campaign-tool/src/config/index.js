@@ -32,8 +32,8 @@ module.exports = {
   },
 
   sendRate: {
-    perSecond: parseInt(process.env.SEND_RATE_PER_SECOND, 10) || 5,
-    perDay: parseInt(process.env.SEND_RATE_PER_DAY, 10) || 2000,
+    perSecond: parseInt(process.env.SEND_RATE_PER_SECOND, 10) || 1,
+    perDay: parseInt(process.env.SEND_RATE_PER_DAY, 10) || 40,
   },
 
   webhookSecret: process.env.WEBHOOK_SECRET || '',
