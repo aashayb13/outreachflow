@@ -2,7 +2,7 @@
 
   <div class="flex items-center justify-between mb-6">
     <div>
-      <p class="text-sm text-gray-500">Connect lead-gen providers (Apollo, Hunter, Lead Magic, Clearbit, Snov.io) to pull contacts directly into your lists.</p>
+      <p class="text-sm text-gray-500">Connect your Apollo.io account to pull contacts directly into your lists.</p>
       <p class="text-xs text-gray-400 mt-1">Credentials are encrypted at rest. All imports honor your suppression list.</p>
     </div>
     <button @click="openCreate()" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600">
@@ -83,7 +83,7 @@
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-700 mb-1">Name</label>
-            <input type="text" x-model="form.name" required placeholder="e.g. Apollo - Field Services ICP" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <input type="text" x-model="form.name" required placeholder="e.g. My Apollo Account" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
           </div>
 
           <template x-if="selectedProvider()">
@@ -279,7 +279,7 @@ function integrationsApp() {
           api.get('/api/lists'),
         ]);
         this.integrations = a.integrations || [];
-        this.providers = b.providers || [];
+        this.providers = (b.providers || []).filter(p => p.id === 'apollo');
         this.lists = (c?.lists || c) || [];
         if (!Array.isArray(this.lists)) this.lists = [];
       } catch (e) {}
