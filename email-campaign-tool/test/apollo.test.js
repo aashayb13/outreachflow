@@ -44,3 +44,13 @@ test('auto-paginates up to max_results (real import)', async () => {
   assert.ok(searchCalls.length >= 3, 'should fetch at least 3 pages');
   assert.ok(res.leads.length >= 5, 'should collect at least max_results leads');
 });
+
+test('reveal_personal_emails flag threads into bulk_match', async () => {
+  const calls = mockFetch({
+    '/mixed_people/api_search': { people: [{ id: 'p1' }], pagination: { total_entries: 1 } },
+    '/people/bulk_match': { matches: [{ id: 'p1', email: 'p1@x.com' }] },
+  });
+  await apollo.search({ api_key: 'k' }, { per_page: 25, reveal_personal_emails: true });
+  const match = calls.find(c => c.url.includes('bulk_match'));
+  assert.equal(match.body.reveal_personal_emails, true);
+});

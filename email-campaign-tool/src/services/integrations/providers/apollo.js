@@ -33,20 +33,21 @@ const meta = {
       help: 'Get from Apollo Settings → Integrations → API' },
   ],
   search_fields: [
-    { key: 'q_keywords', label: 'Keywords', type: 'text', placeholder: 'e.g. plumbing contractor' },
+    { key: 'q_keywords', label: 'Keywords', type: 'text', placeholder: 'e.g. fintech, SaaS, logistics' },
     { key: 'person_titles', label: 'Job Titles (comma-separated)', type: 'text',
-      placeholder: 'Owner, CEO, General Manager' },
+      placeholder: 'Founder, CTO, Engineering Manager, Recruiter' },
     { key: 'person_locations', label: 'Person Location (comma-separated)', type: 'text',
-      placeholder: 'Texas, Chicago, Ireland' },
+      placeholder: 'United States, London, Remote' },
     { key: 'organization_locations', label: 'Company HQ Location (comma-separated)', type: 'text',
-      placeholder: 'Dallas, Texas, United States' },
+      placeholder: 'United States, San Francisco' },
     { key: 'organization_num_employees_ranges', label: 'Employee Range', type: 'text',
       placeholder: '1,10  or  11,50' },
     { key: 'person_seniorities', label: 'Seniority (comma-separated)', type: 'text',
       placeholder: 'owner, founder, c_suite, vp, director, manager' },
-    { key: 'page', label: 'Page', type: 'number', default: 1 },
+    { key: 'page', label: 'Start Page', type: 'number', default: 1 },
     { key: 'per_page', label: 'Per Page (max 100)', type: 'number', default: 25 },
     { key: 'max_results', label: 'Max results to pull (uses credits)', type: 'number', default: 25 },
+    { key: 'reveal_personal_emails', label: 'Include personal emails (uses more credits)', type: 'checkbox', default: false },
   ],
 };
 
@@ -85,28 +86,28 @@ async function _request(creds, path, body) {
 
 /**
  * Enrich people by Apollo ID in batches of 10 to get emails.
- * Returns array of enriched person objects.
+ * Returns { matches, failedBatches }.
  */
-async function _bulkEnrich(creds, people) {
-  if (!people.length) return [];
+async function _bulkEnrich(creds, people, revealPersonal = false) {
+  if (!people.length) return { matches: [], failedBatches: 0 };
 
   const enriched = [];
+  let failedBatches = 0;
   for (let i = 0; i < people.length; i += 10) {
     const batch = people.slice(i, i + 10);
-    const details = batch.map(p => ({ id: p.id }));
-
+    const details = batch.map((p) => ({ id: p.id }));
     try {
       const data = await _request(creds, '/people/bulk_match', {
         details,
-        reveal_personal_emails: false,
+        reveal_personal_emails: !!revealPersonal,
       });
       const matches = Array.isArray(data?.matches) ? data.matches : [];
       enriched.push(...matches);
     } catch (err) {
-      // Batch failed — these contacts won't have emails and will be filtered out
+      failedBatches++;
     }
   }
-  return enriched;
+  return { matches: enriched, failedBatches };
 }
 
 /**
@@ -186,7 +187,8 @@ async function search(creds, params = {}, options = {}) {
   }
 
   // Step 2: Enrich in batches of 10 to get emails
-  const enrichedPeople = await _bulkEnrich(creds, allPeople);
+  const revealPersonal = params.reveal_personal_emails === true || params.reveal_personal_emails === 'true';
+  const { matches: enrichedPeople, failedBatches } = await _bulkEnrich(creds, allPeople, revealPersonal);
   const enrichedMap = new Map();
   for (const ep of enrichedPeople) {
     if (ep.id) enrichedMap.set(ep.id, ep);
@@ -196,7 +198,7 @@ async function search(creds, params = {}, options = {}) {
     .map((p) => _mapLead(p, enrichedMap.get(p.id) || {}))
     .filter((l) => l.email && l.email !== 'email_not_unlocked@domain.com');
 
-  return { leads, pagination: lastPagination, total: apiTotal };
+  return { leads, pagination: lastPagination, total: apiTotal, enrich_errors: failedBatches };
 }
 
 module.exports = { meta, test, search };
