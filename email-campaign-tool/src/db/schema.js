@@ -361,6 +361,26 @@ async function initializeSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_int_logs_int ON integration_sync_logs(integration_id);
     CREATE INDEX IF NOT EXISTS idx_int_logs_created ON integration_sync_logs(created_at);
+
+    -- ═══════════════════════════════════════════════════════════
+    -- ASSETS (uploaded files, e.g. resume PDFs) + campaign links
+    -- ═══════════════════════════════════════════════════════════
+    CREATE TABLE IF NOT EXISTS assets (
+      id              BIGSERIAL PRIMARY KEY,
+      name            TEXT NOT NULL,
+      filename        TEXT NOT NULL DEFAULT '',
+      mime_type       TEXT NOT NULL DEFAULT 'application/octet-stream',
+      size_bytes      INTEGER DEFAULT 0,
+      data_base64     TEXT NOT NULL DEFAULT '',
+      created_at      TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_attachments (
+      campaign_id     BIGINT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      asset_id        BIGINT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+      PRIMARY KEY (campaign_id, asset_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_campaign_attachments_asset ON campaign_attachments(asset_id);
   `);
 
   logger.info('Database schema initialized');

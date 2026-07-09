@@ -104,7 +104,7 @@ async function closeDb() {
 
 // Junction tables with composite primary keys and no `id` column.
 // The translator must NOT auto-append `RETURNING id` for these inserts.
-const TABLES_WITHOUT_ID = new Set(['list_contacts', 'contact_tags']);
+const TABLES_WITHOUT_ID = new Set(['list_contacts', 'contact_tags', 'campaign_attachments']);
 
 // ───────────────────────────────────────────────────────────────────
 // SQL translator: SQLite flavor → Postgres flavor.
