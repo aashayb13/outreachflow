@@ -4,3 +4,8 @@ client-access.txt
 .env*
 credentials.*
 secrets.*
+Login Details.txt
+email-campaign-tool/Password.txt
+
+# SDD scratch workspace
+.superpowers/
