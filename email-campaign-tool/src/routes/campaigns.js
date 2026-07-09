@@ -84,7 +84,7 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
       name, subject, from_name, from_email, reply_to,
       template_id, html_content, text_content,
       type = 'regular', list_ids = [], exclude_list_ids = [],
-      scheduled_at, track_opens = 1, track_clicks = 1,
+      scheduled_at, track_opens = 0, track_clicks = 0,
       utm_source, utm_medium, utm_campaign,
       ab_test_field, ab_split_pct, ab_winner_metric, ab_auto_send_winner,
     } = req.body;

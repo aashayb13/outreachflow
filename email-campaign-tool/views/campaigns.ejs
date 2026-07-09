@@ -128,6 +128,17 @@
 
 I wanted to reach out about..."></textarea>
           </div>
+          <div class="col-span-2 flex items-center gap-6 pt-1">
+            <label class="flex items-center gap-2 text-sm text-gray-600">
+              <input type="checkbox" x-model="form.track_opens" class="rounded border-gray-300" />
+              Track opens
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-600">
+              <input type="checkbox" x-model="form.track_clicks" class="rounded border-gray-300" />
+              Track clicks (rewrites links)
+            </label>
+            <span class="text-xs text-gray-400">Off is recommended for personal cold email.</span>
+          </div>
         </div>
         <div class="flex items-center justify-end gap-3 mt-6">
           <button type="button" @click="showCreate = false" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
@@ -149,7 +160,7 @@ function campaignsApp() {
     showCreate: false,
     templates: [],
     lists: [],
-    form: { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', text_content: '' },
+    form: { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', text_content: '', track_opens: false, track_clicks: false },
 
     async loadCampaigns() {
       const params = new URLSearchParams({ page: this.page, status: this.filter, search: this.search });
@@ -175,7 +186,7 @@ function campaignsApp() {
 
         await api.post('/api/campaigns', payload);
         this.showCreate = false;
-        this.form = { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', html_content: '' };
+        this.form = { name: '', subject: '', from_name: '', reply_to: '', template_id: '', list_id: '', text_content: '', track_opens: false, track_clicks: false };
         toast('Campaign created');
         this.loadCampaigns();
       } catch (e) { /* toast shown by api helper */ }
