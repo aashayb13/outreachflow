@@ -6,6 +6,9 @@ const { populateRecipients, processCampaign, updateCampaignStats } = require('..
 const { fireWebhooks } = require('../services/webhookService');
 const { plainTextToHtml } = require('../services/templateEngine');
 const logger = require('../utils/logger');
+const config = require('../config');
+const { buildEmail } = require('../services/templateEngine');
+const { sendEmail } = require('../services/mailer');
 
 router.use(authenticate);
 
@@ -211,6 +214,42 @@ router.post('/:id/send', requirePermission('write'), async (req, res, next) => {
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/test-send', requirePermission('write'), async (req, res, next) => {
+  try {
+    const db = getDb();
+    const campaign = await db.prepare('SELECT * FROM campaigns WHERE id = ?').get(req.params.id);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const to = (req.body && req.body.to) || config.appEmail;
+    if (!to) return res.status(400).json({ error: 'No recipient — pass "to" or set APP_EMAIL.' });
+
+    let template = { html_content: '', text_content: '', subject: '' };
+    if (campaign.template_id) {
+      template = (await db.prepare('SELECT * FROM templates WHERE id = ?').get(campaign.template_id)) || template;
+    }
+
+    const sampleContact = {
+      id: 0, email: to, first_name: 'there', last_name: '',
+      company: 'Acme', title: '', custom_fields: '{}',
+    };
+    const email = buildEmail(campaign, sampleContact, template);
+
+    const result = await sendEmail({
+      to,
+      subject: `[TEST] ${email.subject}`,
+      html: email.html,
+      text: email.text,
+      from: campaign.from_name
+        ? `"${campaign.from_name}" <${campaign.from_email || config.smtp.fromEmail}>`
+        : undefined,
+      replyTo: campaign.reply_to || undefined,
+    });
+
+    if (!result.success) return res.status(400).json({ error: result.error });
+    res.json({ message: `Test email sent to ${to}`, messageId: result.messageId });
   } catch (err) { next(err); }
 });
 
