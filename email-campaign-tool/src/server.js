@@ -175,8 +175,16 @@ async function start() {
 ╚══════════════════════════════════════════════╝
     `);
 
-    // Start background scheduler
-    startScheduler();
+    // ── Background scheduler (DISABLED for free-tier "send now" use) ──
+    // Time-based sending — scheduled campaigns and drip sequences — is turned
+    // off. On Render's free plan the web service sleeps after 15 min idle, so
+    // the node-cron jobs wouldn't fire reliably anyway. "Send now" from the
+    // dashboard does NOT depend on this and works fine.
+    //
+    // To re-enable later (on a paid always-on instance, or with an uptime
+    // pinger keeping the app awake), just uncomment the line below. The
+    // matching stopScheduler() in shutdown() is already wired up.
+    // startScheduler();
   });
 }
 

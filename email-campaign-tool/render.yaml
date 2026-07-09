@@ -4,18 +4,16 @@
 # file is the inline reference used when creating a Web Service manually
 # from the Render UI and pointing it at this subdirectory.
 
-databases:
-  - name: email-campaign-db
-    plan: basic-256mb
-    region: oregon
-    databaseName: email_campaign
-    user: email_campaign
+# ⚠️  Free tier: the web service sleeps after 15 min idle. Time-based sending
+#     (scheduler) is disabled in code — see startScheduler() in src/server.js.
+#     The database is an EXTERNAL free Supabase Postgres (persistent); set
+#     DATABASE_URL below. See ../render.yaml for the full notes.
 
 services:
   - type: web
     name: email-campaign-tool
     runtime: node
-    plan: starter
+    plan: free               # free web service — sleeps after 15 min idle
     region: oregon
     buildCommand: npm ci
     startCommand: node src/server.js
@@ -41,10 +39,11 @@ services:
       - key: BASE_URL
         sync: false
 
+      # EXTERNAL free Supabase DB. Set to your Supabase "Session pooler"
+      # connection string (port 5432) with your DB password. SSL is handled
+      # automatically for non-localhost hosts by src/db/connection.js.
       - key: DATABASE_URL
-        fromDatabase:
-          name: email-campaign-db
-          property: connectionString
+        sync: false
 
       # SMTP — set after you have Gmail App Password / Mailgun / SendGrid creds
       - key: SMTP_HOST

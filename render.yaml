@@ -6,30 +6,34 @@
 # repo root, which is why this file exists in addition to the inner
 # email-campaign-tool/render.yaml.
 #
-# Deployment:
-#   1. Push this repo to GitHub.
-#   2. In Render: New + → Blueprint → connect this repo.
-#   3. Render will detect this file and provision:
-#       - 1 web service (email-campaign-tool)
-#       - 1 managed Postgres database (email-campaign-db)
-#   4. Fill in the env vars marked `sync: false` in the Render UI.
-#   5. Hit Deploy.
+# Deployment (all free):
+#   1. Create a free Supabase Postgres and copy its "Session pooler"
+#      connection string. Full steps: email-campaign-tool/DEPLOY-OUTREACHFLOW.md.
+#   2. Push this repo to GitHub.
+#   3. In Render: New + → Blueprint → connect this repo.
+#   4. Render detects this file and provisions 1 web service (email-campaign-tool).
+#   5. Fill in the env vars marked `sync: false` in the Render UI — including
+#      DATABASE_URL (the Supabase Session-pooler string, with your password).
+#   6. Hit Deploy.
 #
 # See email-campaign-tool/DEPLOY.md for the full step-by-step.
+#
+# ⚠️  FREE-TIER NOTES (plan: free is set below):
+#   • The web service SLEEPS after 15 min of no HTTP traffic (~1 min cold start
+#     on wake). "Send now" from the dashboard works fine. Time-based sending
+#     (scheduled campaigns / drip sequences) is DISABLED in code because of this
+#     — see the commented-out startScheduler() in src/server.js. To enable it
+#     later, move to a paid always-on instance (or keep the app awake with an
+#     uptime pinger hitting /health every ~10 min) and uncomment that line.
+#   • The database is an EXTERNAL free Supabase Postgres — persistent, it does
+#     NOT expire the way Render's own free Postgres does. Set DATABASE_URL below.
 # ─────────────────────────────────────────────────────────────────
-
-databases:
-  - name: email-campaign-db
-    plan: basic-256mb        # cheapest paid Postgres tier on Render
-    region: oregon
-    databaseName: email_campaign
-    user: email_campaign
 
 services:
   - type: web
     name: email-campaign-tool
     runtime: node
-    plan: starter
+    plan: free               # free web service — sleeps after 15 min idle
     region: oregon
     rootDir: email-campaign-tool
     buildCommand: npm ci
@@ -56,11 +60,13 @@ services:
       - key: BASE_URL
         sync: false
 
-      # Postgres — wired automatically from the database service above
+      # Postgres — EXTERNAL free Supabase DB (persistent). Set this in the
+      # Render UI to your Supabase "Session pooler" connection string
+      # (Supabase → Project → Connect → Session pooler, port 5432), with your
+      # DB password filled in. SSL is applied automatically for non-localhost
+      # hosts by src/db/connection.js — no ?sslmode flag needed.
       - key: DATABASE_URL
-        fromDatabase:
-          name: email-campaign-db
-          property: connectionString
+        sync: false
 
       # ─── SMTP (set after you have credentials) ──────────────────
       - key: SMTP_HOST
