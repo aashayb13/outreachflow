@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title><%= typeof title !== 'undefined' ? title + ' | ' : '' %>Email Campaign Tool</title>
+  <title><%= typeof title !== 'undefined' ? title + ' | ' : '' %>OutreachFlow</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
@@ -20,8 +20,8 @@
     <!-- Sidebar -->
     <aside class="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0" x-show="sidebarOpen" x-transition>
       <div class="p-5 border-b border-gray-200">
-        <h1 class="text-xl font-bold text-gray-800"><i class="fas fa-paper-plane text-blue-500 mr-2"></i>Campaign Tool</h1>
-        <p class="text-xs text-gray-400 mt-1">Email Marketing Platform</p>
+        <h1 class="text-xl font-bold text-gray-800"><i class="fas fa-paper-plane text-blue-500 mr-2"></i>OutreachFlow</h1>
+        <p class="text-xs text-gray-400 mt-1">Personal Outreach</p>
       </div>
       <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
         <a href="/" class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 <%= typeof page !== 'undefined' && page === 'dashboard' ? 'active' : '' %>">

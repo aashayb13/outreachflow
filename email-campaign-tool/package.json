@@ -1,7 +1,7 @@
 {
-  "name": "email-campaign-tool",
+  "name": "outreachflow",
   "version": "1.0.0",
-  "description": "Professional email marketing campaign platform with campaign management, analytics, A/B testing, drip sequences, webhook integrations, and compliance features",
+  "description": "OutreachFlow — personal cold-email and job-application outreach: Apollo lead pulls, Gmail sending, scheduling, sequences, and attachments",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -19,7 +19,7 @@
     "campaign",
     "automation"
   ],
-  "author": "Patriot Tech Systems Consulting LLC",
+  "author": "Aashay Bhujbal",
   "license": "PROPRIETARY",
   "dependencies": {
     "bcryptjs": "^2.4.3",
