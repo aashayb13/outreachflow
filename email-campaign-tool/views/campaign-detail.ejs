@@ -103,6 +103,23 @@
     </div>
   </div>
 
+  <!-- Attachments -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-6">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">Attachments</h3>
+    <div class="flex items-center gap-3 mb-4">
+      <input type="file" @change="uploadAsset($event)" class="text-sm" />
+    </div>
+    <div class="space-y-2">
+      <template x-for="a in attachments" :key="a.id">
+        <div class="flex items-center justify-between p-2 rounded hover:bg-gray-50">
+          <span class="text-sm text-gray-700"><i class="fas fa-paperclip mr-2 text-gray-400"></i><span x-text="a.filename"></span></span>
+          <button @click="detachAsset(a.id)" class="text-xs text-red-500 hover:underline">Remove</button>
+        </div>
+      </template>
+      <p x-show="!attachments.length" class="text-sm text-gray-400">No attachments</p>
+    </div>
+  </div>
+
   <!-- Schedule Modal -->
   <div x-show="showSchedule" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showSchedule = false">
     <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
@@ -123,6 +140,7 @@ function campaignDetail() {
     campaign: {},
     analytics: {},
     recentEvents: [],
+    attachments: [],
     showSchedule: false,
     scheduleDate: '',
 
@@ -133,6 +151,30 @@ function campaignDetail() {
 
       const aData = await api.get(`/api/campaigns/${campaignId}/analytics`);
       this.analytics = aData;
+
+      this.loadAttachments();
+    },
+
+    async loadAttachments() {
+      const data = await api.get(`/api/campaigns/${campaignId}/attachments`);
+      this.attachments = data.assets || [];
+    },
+    async uploadAsset(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const { asset } = await api.upload('/api/assets', fd);
+        await api.post(`/api/campaigns/${campaignId}/attachments`, { asset_id: asset.id });
+        toast('Attachment added');
+        this.loadAttachments();
+        e.target.value = '';
+      } catch (err) { toast('Upload failed', 'error'); }
+    },
+    async detachAsset(assetId) {
+      await api.del(`/api/campaigns/${campaignId}/attachments/${assetId}`);
+      this.loadAttachments();
     },
 
     async sendNow() {

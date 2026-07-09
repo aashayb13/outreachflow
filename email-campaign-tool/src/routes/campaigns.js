@@ -237,6 +237,15 @@ router.post('/:id/test-send', requirePermission('write'), async (req, res, next)
     };
     const email = buildEmail(campaign, sampleContact, template);
 
+    const attachRows = await db.prepare(`
+      SELECT a.filename, a.mime_type, a.data_base64
+      FROM campaign_attachments ca JOIN assets a ON a.id = ca.asset_id
+      WHERE ca.campaign_id = ?
+    `).all(campaign.id);
+    const attachments = attachRows.map(r => ({
+      filename: r.filename, content: Buffer.from(r.data_base64, 'base64'), contentType: r.mime_type,
+    }));
+
     const result = await sendEmail({
       to,
       subject: `[TEST] ${email.subject}`,
@@ -246,6 +255,7 @@ router.post('/:id/test-send', requirePermission('write'), async (req, res, next)
         ? `"${campaign.from_name}" <${campaign.from_email || config.smtp.fromEmail}>`
         : undefined,
       replyTo: campaign.reply_to || undefined,
+      attachments,
     });
 
     if (!result.success) return res.status(400).json({ error: result.error });
@@ -360,6 +370,38 @@ router.get('/:id/analytics', async (req, res, next) => {
       top_links: topLinks,
       hourly_opens: hourlyOpens,
     });
+  } catch (err) { next(err); }
+});
+
+router.get('/:id/attachments', async (req, res, next) => {
+  try {
+    const db = getDb();
+    const assets = await db.prepare(`
+      SELECT a.id, a.name, a.filename, a.mime_type, a.size_bytes
+      FROM campaign_attachments ca JOIN assets a ON a.id = ca.asset_id
+      WHERE ca.campaign_id = ?
+    `).all(req.params.id);
+    res.json({ assets });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/attachments', requirePermission('write'), async (req, res, next) => {
+  try {
+    const db = getDb();
+    const assetId = req.body && req.body.asset_id;
+    if (!assetId) return res.status(400).json({ error: 'asset_id is required' });
+    await db.prepare('INSERT OR IGNORE INTO campaign_attachments (campaign_id, asset_id) VALUES (?, ?)')
+      .run(parseInt(req.params.id, 10), parseInt(assetId, 10));
+    res.json({ message: 'Attachment added' });
+  } catch (err) { next(err); }
+});
+
+router.delete('/:id/attachments/:assetId', requirePermission('write'), async (req, res, next) => {
+  try {
+    const db = getDb();
+    await db.prepare('DELETE FROM campaign_attachments WHERE campaign_id = ? AND asset_id = ?')
+      .run(parseInt(req.params.id, 10), parseInt(req.params.assetId, 10));
+    res.json({ message: 'Attachment removed' });
   } catch (err) { next(err); }
 });
 

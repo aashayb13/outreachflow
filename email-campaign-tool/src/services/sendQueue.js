@@ -5,6 +5,20 @@ const { fireWebhooks } = require('./webhookService');
 const config = require('../config');
 const logger = require('../utils/logger');
 
+async function loadCampaignAttachments(db, campaignId) {
+  const rows = await db.prepare(`
+    SELECT a.filename, a.mime_type, a.data_base64
+    FROM campaign_attachments ca
+    JOIN assets a ON a.id = ca.asset_id
+    WHERE ca.campaign_id = ?
+  `).all(campaignId);
+  return rows.map(r => ({
+    filename: r.filename,
+    content: Buffer.from(r.data_base64, 'base64'),
+    contentType: r.mime_type,
+  }));
+}
+
 let isSending = false;
 let dailySendCount = 0;
 let dailyResetDate = new Date().toISOString().slice(0, 10);
@@ -98,6 +112,8 @@ async function processCampaign(campaignId) {
       template = (await db.prepare('SELECT * FROM templates WHERE id = ?').get(campaign.template_id)) || template;
     }
 
+    const campaignAttachments = await loadCampaignAttachments(db, campaignId);
+
     await db.prepare("UPDATE campaigns SET status = 'sending', send_started_at = NOW(), updated_at = NOW() WHERE id = ?").run(campaignId);
 
     const batchSize = 50;
@@ -159,6 +175,7 @@ async function processCampaign(campaignId) {
             'X-Campaign-ID': String(campaignId),
             'List-Unsubscribe': `<${unsubUrl}>`,
           },
+          attachments: campaignAttachments,
         });
 
         if (result.success) {
