@@ -12,7 +12,7 @@ function renderTemplate(template, variables = {}) {
     if (value !== undefined && value !== null && value !== '') {
       return String(value);
     }
-    return fallback !== undefined ? fallback : match;
+    return fallback !== undefined ? fallback : '';
   });
 }
 
