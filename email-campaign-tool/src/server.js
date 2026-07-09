@@ -86,6 +86,7 @@ app.use('/api/webhooks', require('./routes/webhooks'));
 app.use('/api/tags', require('./routes/tags'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/integrations', require('./routes/integrations'));
+app.use('/api/assets', require('./routes/assets'));
 
 // ─── Tracking Routes (public, no auth) ─────────────────────────────
 app.use('/t', require('./routes/tracking'));
