@@ -109,7 +109,7 @@ async function importFromIntegration(integration, options = {}) {
   const creds = decryptJSON(integration.credentials);
   const start = Date.now();
   try {
-    const result = await provider.search(creds, params);
+    const result = await provider.search(creds, params, { dryRun: dry_run });
     const leads = result?.leads || [];
     const importResult = await importLeads(leads, {
       source: `integration:${integration.provider}`,

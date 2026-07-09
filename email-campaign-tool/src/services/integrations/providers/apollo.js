@@ -105,12 +105,37 @@ async function _bulkEnrich(creds, people) {
   return enriched;
 }
 
+/**
+ * Merge search-result person with (optional) bulk_match enrichment data
+ * into a normalized lead object.
+ */
+function _mapLead(p, enriched) {
+  const email = enriched.email || p.email || '';
+  return {
+    email,
+    first_name: enriched.first_name || p.first_name || '',
+    last_name: enriched.last_name || p.last_name || '',
+    title: enriched.title || p.title || '',
+    company: enriched.organization?.name || p.organization?.name || '',
+    industry: p.organization?.industry || '',
+    city: enriched.city || p.city || '',
+    state: enriched.state || p.state || '',
+    country: enriched.country || p.country || '',
+    phone: enriched.phone_numbers?.[0]?.sanitized_number || enriched.phone || '',
+    custom_fields: {
+      apollo_id: p.id,
+      linkedin_url: enriched.linkedin_url || p.linkedin_url || '',
+      organization_website: enriched.organization?.website_url || p.organization?.website_url || '',
+    },
+  };
+}
+
 async function test(creds) {
   const data = await _request(creds, '/mixed_people/api_search', { page: 1, per_page: 1 });
   return { ok: true, info: { total: data?.pagination?.total_entries ?? data?.total_entries ?? null } };
 }
 
-async function search(creds, params = {}) {
+async function search(creds, params = {}, options = {}) {
   const body = {
     page: Math.max(1, parseInt(params.page, 10) || 1),
     per_page: Math.max(1, Math.min(parseInt(params.per_page, 10) || 25, 100)),
@@ -137,45 +162,24 @@ async function search(creds, params = {}) {
     return { leads: [], pagination: data?.pagination || null, total: apiTotal };
   }
 
+  // Dry-run preview: skip bulk_match enrichment entirely (saves email credits).
+  if (options.dryRun) {
+    const leads = people.map(p => _mapLead(p, {}));
+    return { leads, pagination: data?.pagination || null, total: apiTotal };
+  }
+
   // Step 2: Enrich in batches of 10 to get emails
   const enrichedPeople = await _bulkEnrich(creds, people);
-
-  // Build a lookup map by Apollo ID for enriched data
   const enrichedMap = new Map();
   for (const ep of enrichedPeople) {
     if (ep.id) enrichedMap.set(ep.id, ep);
   }
 
-  // Merge: use search data as base, overlay email + phone from enrichment
   const leads = people
-    .map(p => {
-      const enriched = enrichedMap.get(p.id) || {};
-      const email = enriched.email || p.email || '';
-      return {
-        email,
-        first_name: enriched.first_name || p.first_name || '',
-        last_name: enriched.last_name || p.last_name || '',
-        title: enriched.title || p.title || '',
-        company: enriched.organization?.name || p.organization?.name || '',
-        industry: p.organization?.industry || '',
-        city: enriched.city || p.city || '',
-        state: enriched.state || p.state || '',
-        country: enriched.country || p.country || '',
-        phone: enriched.phone_numbers?.[0]?.sanitized_number || enriched.phone || '',
-        custom_fields: {
-          apollo_id: p.id,
-          linkedin_url: enriched.linkedin_url || p.linkedin_url || '',
-          organization_website: enriched.organization?.website_url || p.organization?.website_url || '',
-        },
-      };
-    })
+    .map(p => _mapLead(p, enrichedMap.get(p.id) || {}))
     .filter(l => l.email && l.email !== 'email_not_unlocked@domain.com');
 
-  return {
-    leads,
-    pagination: data?.pagination || null,
-    total: apiTotal,
-  };
+  return { leads, pagination: data?.pagination || null, total: apiTotal };
 }
 
 module.exports = { meta, test, search };
