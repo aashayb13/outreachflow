@@ -58,6 +58,17 @@
         <div class="flex justify-between"><span class="text-gray-500">Tracking Domain</span><span class="text-gray-800 font-mono"><%= typeof tracking_domain !== 'undefined' ? tracking_domain : '-' %></span></div>
       </div>
     </div>
+
+    <!-- Gmail sending guidance -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <h3 class="font-semibold text-gray-700 mb-4"><i class="fas fa-shield-halved text-gray-400 mr-2"></i>Gmail Sending &amp; Deliverability</h3>
+      <ul class="text-sm text-gray-600 space-y-2 list-disc pl-5">
+        <li>Personal Gmail caps at ~500 recipients/day. Current cap: <span class="font-mono"><%= typeof send_daily !== 'undefined' ? send_daily : '-' %>/day</span>.</li>
+        <li>Start low (~40/day) and raise by ~10–20/day each week to protect your inbox reputation.</li>
+        <li>Keep open/click tracking <strong>off</strong> for cold email — it hurts deliverability and looks like marketing.</li>
+        <li>Requires a Google <strong>App Password</strong> (2FA must be enabled). <code>SMTP_FROM_EMAIL</code> must match your Gmail address.</li>
+      </ul>
+    </div>
   </div>
 </div>
 
