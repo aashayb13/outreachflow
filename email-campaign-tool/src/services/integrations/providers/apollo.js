@@ -14,11 +14,14 @@
  *    We must call bulk_match to enrich each person by their Apollo ID.
  *  - Apollo masks emails on free/lower plans (`email_status: 'unavailable'`).
  *    We surface only leads with a real email so we don't import junk.
- *  - Apollo's People Search is rate-limited per minute/hour/day. We do NOT
- *    auto-paginate beyond the requested page to stay safe.
+ *  - Apollo's People Search is rate-limited per minute/hour/day. We
+ *    auto-paginate up to `max_results` (hard-capped at 500, 20 pages max)
+ *    with a 250ms delay between pages to stay gentle on rate limits.
  */
 
 const BASE_URL = 'https://api.apollo.io/api/v1';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const meta = {
   id: 'apollo',
@@ -43,6 +46,7 @@ const meta = {
       placeholder: 'owner, founder, c_suite, vp, director, manager' },
     { key: 'page', label: 'Page', type: 'number', default: 1 },
     { key: 'per_page', label: 'Per Page (max 100)', type: 'number', default: 25 },
+    { key: 'max_results', label: 'Max results to pull (uses credits)', type: 'number', default: 25 },
   ],
 };
 
@@ -136,11 +140,12 @@ async function test(creds) {
 }
 
 async function search(creds, params = {}, options = {}) {
-  const body = {
-    page: Math.max(1, parseInt(params.page, 10) || 1),
-    per_page: Math.max(1, Math.min(parseInt(params.per_page, 10) || 25, 100)),
-  };
+  const perPage = Math.max(1, Math.min(parseInt(params.per_page, 10) || 25, 100));
+  const startPage = Math.max(1, parseInt(params.page, 10) || 1);
+  const maxResults = Math.max(1, Math.min(parseInt(params.max_results, 10) || perPage, 500));
+  const MAX_PAGES = 20; // hard safety cap on API calls per search
 
+  const body = { page: startPage, per_page: perPage };
   if (params.q_keywords) body.q_keywords = params.q_keywords;
   const titles = splitList(params.person_titles);
   if (titles) body.person_titles = titles;
@@ -153,33 +158,45 @@ async function search(creds, params = {}, options = {}) {
   const ranges = splitList(params.organization_num_employees_ranges);
   if (ranges) body.organization_num_employees_ranges = ranges;
 
-  // Step 1: Search (returns people WITHOUT emails)
-  const data = await _request(creds, '/mixed_people/api_search', body);
-  const people = Array.isArray(data?.people) ? data.people : [];
-  const apiTotal = data?.pagination?.total_entries ?? data?.total_entries ?? 0;
+  // Step 1: Search (paged) — collect people up to maxResults.
+  let allPeople = [];
+  let apiTotal = 0;
+  let lastPagination = null;
+  for (let i = 0; i < MAX_PAGES && allPeople.length < maxResults; i++) {
+    body.page = startPage + i;
+    const data = await _request(creds, '/mixed_people/api_search', body);
+    const people = Array.isArray(data?.people) ? data.people : [];
+    apiTotal = data?.pagination?.total_entries ?? data?.total_entries ?? apiTotal;
+    lastPagination = data?.pagination || lastPagination;
+    if (!people.length) break;
+    allPeople.push(...people);
+    if (people.length < perPage) break; // last page reached
+    if (allPeople.length < maxResults) await sleep(250); // be gentle on Apollo rate limits
+  }
+  allPeople = allPeople.slice(0, maxResults);
 
-  if (!people.length) {
-    return { leads: [], pagination: data?.pagination || null, total: apiTotal };
+  if (!allPeople.length) {
+    return { leads: [], pagination: lastPagination, total: apiTotal };
   }
 
   // Dry-run preview: skip bulk_match enrichment entirely (saves email credits).
   if (options.dryRun) {
-    const leads = people.map(p => _mapLead(p, {}));
-    return { leads, pagination: data?.pagination || null, total: apiTotal };
+    const leads = allPeople.map((p) => _mapLead(p, {}));
+    return { leads, pagination: lastPagination, total: apiTotal };
   }
 
   // Step 2: Enrich in batches of 10 to get emails
-  const enrichedPeople = await _bulkEnrich(creds, people);
+  const enrichedPeople = await _bulkEnrich(creds, allPeople);
   const enrichedMap = new Map();
   for (const ep of enrichedPeople) {
     if (ep.id) enrichedMap.set(ep.id, ep);
   }
 
-  const leads = people
-    .map(p => _mapLead(p, enrichedMap.get(p.id) || {}))
-    .filter(l => l.email && l.email !== 'email_not_unlocked@domain.com');
+  const leads = allPeople
+    .map((p) => _mapLead(p, enrichedMap.get(p.id) || {}))
+    .filter((l) => l.email && l.email !== 'email_not_unlocked@domain.com');
 
-  return { leads, pagination: data?.pagination || null, total: apiTotal };
+  return { leads, pagination: lastPagination, total: apiTotal };
 }
 
 module.exports = { meta, test, search };
