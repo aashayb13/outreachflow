@@ -4,16 +4,16 @@
 # file is the inline reference used when creating a Web Service manually
 # from the Render UI and pointing it at this subdirectory.
 
-# ⚠️  Free tier: the web service sleeps after 15 min idle. Time-based sending
-#     (scheduler) is disabled in code — see startScheduler() in src/server.js.
-#     The database is an EXTERNAL free Supabase Postgres (persistent); set
-#     DATABASE_URL below. See ../render.yaml for the full notes.
+# ⚠️  Instance = paid Starter (always-on); SMTP ports 587/465 work (Render's
+#     FREE tier blocks them). Time-based sending (scheduler) is commented out in
+#     src/server.js by preference — re-enable via startScheduler() anytime.
+#     Database is an EXTERNAL Supabase Postgres (persistent). See ../render.yaml.
 
 services:
   - type: web
     name: email-campaign-tool
     runtime: node
-    plan: free               # free web service — sleeps after 15 min idle
+    plan: starter            # paid, always-on; SMTP 587/465 unblocked, no sleep
     region: oregon
     buildCommand: npm ci
     startCommand: node src/server.js

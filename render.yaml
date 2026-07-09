@@ -6,7 +6,7 @@
 # repo root, which is why this file exists in addition to the inner
 # email-campaign-tool/render.yaml.
 #
-# Deployment (all free):
+# Deployment:
 #   1. Create a free Supabase Postgres and copy its "Session pooler"
 #      connection string. Full steps: email-campaign-tool/DEPLOY-OUTREACHFLOW.md.
 #   2. Push this repo to GitHub.
@@ -18,22 +18,22 @@
 #
 # See email-campaign-tool/DEPLOY.md for the full step-by-step.
 #
-# ⚠️  FREE-TIER NOTES (plan: free is set below):
-#   • The web service SLEEPS after 15 min of no HTTP traffic (~1 min cold start
-#     on wake). "Send now" from the dashboard works fine. Time-based sending
-#     (scheduled campaigns / drip sequences) is DISABLED in code because of this
-#     — see the commented-out startScheduler() in src/server.js. To enable it
-#     later, move to a paid always-on instance (or keep the app awake with an
-#     uptime pinger hitting /health every ~10 min) and uncomment that line.
-#   • The database is an EXTERNAL free Supabase Postgres — persistent, it does
-#     NOT expire the way Render's own free Postgres does. Set DATABASE_URL below.
+# ⚠️  NOTES (plan: starter is set below):
+#   • Instance = paid Starter plan (always-on). Gmail/SMTP works because paid
+#     instances allow outbound SMTP ports 587/465 — Render's FREE tier blocks
+#     them, which is why Gmail sending timed out on free. No 15-min sleep either.
+#   • Time-based sending (scheduled campaigns / drip sequences) is commented out
+#     in src/server.js by preference (send-now only). The instance is always-on,
+#     so re-enable it anytime by uncommenting startScheduler().
+#   • The database is an EXTERNAL Supabase Postgres (free tier) — persistent, it
+#     does NOT expire the way Render's own free Postgres would. Set DATABASE_URL below.
 # ─────────────────────────────────────────────────────────────────
 
 services:
   - type: web
     name: email-campaign-tool
     runtime: node
-    plan: free               # free web service — sleeps after 15 min idle
+    plan: starter            # paid, always-on; SMTP 587/465 unblocked, no sleep
     region: oregon
     rootDir: email-campaign-tool
     buildCommand: npm ci

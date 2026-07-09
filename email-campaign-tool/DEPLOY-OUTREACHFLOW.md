@@ -1,14 +1,15 @@
-# OutreachFlow — Deploy Checklist (all free)
+# OutreachFlow — Deploy Checklist
 
-App = **Render** free web service. Database = **Supabase** free Postgres.
+App = **Render** Starter web service (paid, always-on). Database = **Supabase** free Postgres.
 
-> Two things to know about the free setup:
-> - The Render web service **sleeps after 15 min of inactivity** (~1 min cold
->   start on wake). **"Send now" from the dashboard works fine.** Time-based
->   sending (scheduled campaigns / drip sequences) is **disabled in code** — see
->   the commented-out `startScheduler()` in `src/server.js`. Re-enable it later on
->   a paid always-on instance, or keep the app awake with a free uptime pinger
->   (UptimeRobot / cron-job.org) hitting `/health` every ~10 min.
+> Good to know:
+> - The web service runs on Render's **Starter** plan (~$7/mo, always-on). This is
+>   **required for Gmail/SMTP sending**: Render's free tier blocks outbound SMTP
+>   ports (587/465), so email only sends from a paid instance. Always-on also
+>   means no cold-start sleep.
+> - Time-based sending (scheduled campaigns / drip sequences) is **commented out**
+>   in `src/server.js` by preference (send-now mode). Since the instance is
+>   always-on, re-enable it anytime by uncommenting `startScheduler()`.
 > - The DB is **Supabase** (external, free, **persistent** — unlike Render's own
 >   free Postgres it does not expire after 30 days).
 
