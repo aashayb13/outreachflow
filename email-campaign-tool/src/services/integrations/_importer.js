@@ -85,6 +85,29 @@ function normalizeLead(lead) {
 }
 
 /**
+ * Attach a contact to a list and/or a set of tags, idempotently. Shared by
+ * both the new-contact and already-existing-contact branches of
+ * importLeads() so re-importing a contact still updates its list/tag
+ * membership instead of being a no-op.
+ */
+async function attachToListAndTags(db, contactId, list_id, tags) {
+  if (list_id) {
+    await db.prepare('INSERT OR IGNORE INTO list_contacts (list_id, contact_id) VALUES (?, ?)').run(parseInt(list_id, 10), contactId);
+  }
+  if (Array.isArray(tags) && tags.length) {
+    for (const name of tags) {
+      const tagName = String(name).trim();
+      if (!tagName) continue;
+      await db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').run(tagName);
+      const tag = await db.prepare('SELECT id FROM tags WHERE name = ?').get(tagName);
+      if (tag) {
+        await db.prepare('INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)').run(contactId, tag.id);
+      }
+    }
+  }
+}
+
+/**
  * Import an array of normalized leads.
  *
  * options: { source, list_id, tags, dry_run }
@@ -133,24 +156,15 @@ async function importLeads(leads, options = {}) {
           imported++;
           const contactId = result.lastInsertRowid;
           importedContacts.push({ id: contactId, email: c.email });
-
-          if (list_id) {
-            await db.prepare('INSERT OR IGNORE INTO list_contacts (list_id, contact_id) VALUES (?, ?)').run(parseInt(list_id, 10), contactId);
-          }
-
-          if (Array.isArray(tags) && tags.length) {
-            for (const name of tags) {
-              const tagName = String(name).trim();
-              if (!tagName) continue;
-              await db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').run(tagName);
-              const tag = await db.prepare('SELECT id FROM tags WHERE name = ?').get(tagName);
-              if (tag) {
-                await db.prepare('INSERT OR IGNORE INTO contact_tags (contact_id, tag_id) VALUES (?, ?)').run(contactId, tag.id);
-              }
-            }
-          }
+          await attachToListAndTags(db, contactId, list_id, tags);
         } else {
+          // Contact already exists — INSERT OR IGNORE returned 0 rows, so we
+          // resolve its id and still add it to the target list/tags.
           skipped++;
+          if (list_id || (Array.isArray(tags) && tags.length)) {
+            const existing = await db.prepare('SELECT id FROM contacts WHERE email = ?').get(c.email);
+            if (existing) await attachToListAndTags(db, existing.id, list_id, tags);
+          }
         }
       }
     })();
