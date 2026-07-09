@@ -48,7 +48,7 @@ services:
 
       # SMTP — set after you have Gmail App Password / Mailgun / SendGrid creds
       - key: SMTP_HOST
-        sync: false
+        value: "smtp.gmail.com"
       - key: SMTP_PORT
         value: "587"
       - key: SMTP_SECURE

@@ -10,7 +10,7 @@
    - SMTP_USER  (your Gmail), SMTP_PASS (16-char Google App Password),
      SMTP_FROM_EMAIL (= your Gmail), SMTP_FROM_NAME (your name)
    - TRACKING_DOMAIN  (= BASE_URL; only used if you turn tracking on)
-   (SEND_RATE_PER_SECOND=1, SEND_RATE_PER_DAY=40, SMTP_HOST/PORT are already in render.yaml.)
+   (Baked-in SMTP vars — no manual entry needed: SMTP_HOST=smtp.gmail.com, SMTP_PORT=587, SMTP_SECURE=false.)
 4. Deploy. On first boot the schema auto-creates.
 5. Run the seed once (optional) via a Render shell: `npm run db:seed`.
 6. Log in, add your Apollo API key on Integrations, upload your resume on a campaign, send a test to yourself.
