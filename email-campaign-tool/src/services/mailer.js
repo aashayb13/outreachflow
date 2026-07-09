@@ -29,7 +29,7 @@ function getTransporter() {
  * Send a single email.
  * Returns { success, messageId, error }
  */
-async function sendEmail({ to, subject, html, text, from, replyTo, headers = {} }) {
+async function sendEmail({ to, subject, html, text, from, replyTo, headers = {}, attachments = [] }) {
   const transport = getTransporter();
 
   const fromAddress = from || `"${config.smtp.fromName}" <${config.smtp.fromEmail}>`;
@@ -39,6 +39,7 @@ async function sendEmail({ to, subject, html, text, from, replyTo, headers = {} 
     subject,
     html,
     text,
+    attachments,
     replyTo: replyTo || config.smtp.fromEmail,
     headers: {
       'List-Unsubscribe': headers['List-Unsubscribe'] || '',
