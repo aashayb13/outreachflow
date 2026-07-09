@@ -41,7 +41,7 @@ router.post('/', requirePermission('write'), upload.single('file'), async (req, 
 router.delete('/:id', requirePermission('write'), async (req, res, next) => {
   try {
     const db = getDb();
-    await db.prepare('DELETE FROM assets WHERE id = ?').run(req.params.id);
+    await db.prepare('DELETE FROM assets WHERE id = ?').run(parseInt(req.params.id, 10));
     res.json({ message: 'Asset deleted' });
   } catch (err) { next(err); }
 });

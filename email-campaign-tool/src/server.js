@@ -169,7 +169,7 @@ async function start() {
   server = app.listen(config.port, () => {
     logger.info(`
 ╔══════════════════════════════════════════════╗
-║     Email Campaign Tool — Running!           ║
+║     OutreachFlow — Running!                  ║
 ║     http://localhost:${config.port}                  ║
 ║     Environment: ${config.env}                ║
 ╚══════════════════════════════════════════════╝

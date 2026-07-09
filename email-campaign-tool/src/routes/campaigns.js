@@ -4,10 +4,9 @@ const { getDb } = require('../db/connection');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { populateRecipients, processCampaign, updateCampaignStats } = require('../services/sendQueue');
 const { fireWebhooks } = require('../services/webhookService');
-const { plainTextToHtml } = require('../services/templateEngine');
+const { plainTextToHtml, buildEmail } = require('../services/templateEngine');
 const logger = require('../utils/logger');
 const config = require('../config');
-const { buildEmail } = require('../services/templateEngine');
 const { sendEmail } = require('../services/mailer');
 
 router.use(authenticate);

@@ -134,7 +134,7 @@ async function importFromIntegration(integration, options = {}) {
       await db.prepare('UPDATE integrations SET total_imported = total_imported + ?, updated_at = NOW() WHERE id = ?').run(importResult.imported, integration.id);
     }
 
-    return { ...importResult, total_results: leads.length, raw_pagination: result?.pagination };
+    return { ...importResult, total_results: leads.length, raw_pagination: result?.pagination, enrich_errors: result?.enrich_errors || 0 };
   } catch (err) {
     await _logSync({
       integration_id: integration.id, action: 'import', status: 'error',

@@ -103,7 +103,7 @@ async function _bulkEnrich(creds, people, revealPersonal = false) {
       });
       const matches = Array.isArray(data?.matches) ? data.matches : [];
       enriched.push(...matches);
-    } catch (err) {
+    } catch {
       failedBatches++;
     }
   }

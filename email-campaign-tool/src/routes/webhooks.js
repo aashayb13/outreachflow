@@ -96,7 +96,7 @@ router.post('/:id/test', authenticate, requirePermission('write'), async (req, r
     const testPayload = JSON.stringify({
       event: 'webhook.test',
       timestamp: new Date().toISOString(),
-      data: { message: 'This is a test webhook from your email campaign tool' },
+      data: { message: 'This is a test webhook from your OutreachFlow account' },
     });
 
     try {
