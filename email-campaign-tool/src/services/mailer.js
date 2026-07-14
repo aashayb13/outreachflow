@@ -4,10 +4,12 @@ const logger = require('../utils/logger');
 const { getEffectiveSmtp } = require('./settings');
 
 let transporter = null;
+let cachedSmtp = null;
 
 async function getTransporter() {
   if (transporter) return transporter;
   const s = await getEffectiveSmtp();
+  cachedSmtp = s;
   transporter = nodemailer.createTransport({
     host: s.host,
     port: s.port,
@@ -33,7 +35,7 @@ function cleanOverrides(o) {
 /** Send a single email. Returns { success, messageId, error }. */
 async function sendEmail({ to, subject, html, text, from, replyTo, headers = {}, attachments = [] }) {
   const transport = await getTransporter();
-  const s = await getEffectiveSmtp();
+  const s = cachedSmtp;
   const fromAddress = from || `"${s.fromName}" <${s.fromEmail}>`;
   const mailOptions = {
     from: fromAddress,
@@ -88,6 +90,7 @@ async function verifyConnection(overrides) {
 /** Close the cached transporter pool. */
 function closeTransporter() {
   if (transporter) { transporter.close(); transporter = null; }
+  cachedSmtp = null;
 }
 
 // After saving new SMTP settings, drop the cached transporter so the next
