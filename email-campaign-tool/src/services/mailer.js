@@ -74,6 +74,8 @@ async function verifyConnection(overrides) {
         port: parseInt(s.port, 10) || 587,
         secure: s.secure === true || s.secure === 'true',
         auth: { user: s.user, pass: s.pass },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
       });
     } else {
       transport = await getTransporter();
