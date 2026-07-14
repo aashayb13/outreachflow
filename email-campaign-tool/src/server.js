@@ -158,53 +158,49 @@ app.get('/settings', authenticate, (req, res) => {
 app.use(notFound);
 app.use(errorHandler);
 
-// ─── Start Server ───────────────────────────────────────────────────
-let server;
+// ─── Start / Stop ───────────────────────────────────────────────────
+let server = null;
 
 async function start() {
-  // Initialize Postgres connection pool and ensure schema is up to date.
   await initDb();
   await initializeSchema();
 
-  server = app.listen(config.port, () => {
-    logger.info(`
-╔══════════════════════════════════════════════╗
-║     OutreachFlow — Running!                  ║
-║     http://localhost:${config.port}                  ║
-║     Environment: ${config.env}                ║
-╚══════════════════════════════════════════════╝
-    `);
-
-    // ── Background scheduler (commented out by preference) ──
-    // Time-based sending — scheduled campaigns and drip sequences — is turned
-    // off; the app is used in "send now" mode. This does NOT affect "Send now".
-    //
-    // The instance runs on Render's always-on Starter plan, so re-enabling is
-    // safe whenever you want scheduled/drip sends: just uncomment the line
-    // below. The matching stopScheduler() in shutdown() is already wired up.
-    // startScheduler();
+  await new Promise((resolve) => {
+    server = app.listen(config.port, () => {
+      logger.info(`OutreachFlow running on http://localhost:${config.port} (env: ${config.env})`);
+      // Background scheduler stays off by preference (send-now mode).
+      // startScheduler();
+      resolve();
+    });
   });
+  return server;
 }
 
-start().catch(err => {
-  logger.error(`Failed to start: ${err.message}`);
-  process.exit(1);
-});
-
-// ─── Graceful Shutdown ──────────────────────────────────────────────
-async function shutdown(signal) {
-  logger.info(`${signal} received. Shutting down...`);
+async function stop() {
   stopScheduler();
   closeTransporter();
   try { await closeDb(); } catch (_) { /* ignore */ }
-  server.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
+  await new Promise((resolve) => {
+    if (!server) return resolve();
+    server.close(() => resolve());
   });
-  setTimeout(() => process.exit(1), 5000);
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+// Auto-start ONLY when launched directly (`node src/server.js`) — not when
+// required by Electron (electron/main.js) or by tests.
+if (require.main === module) {
+  start().catch((err) => {
+    logger.error(`Failed to start: ${err.message}`);
+    process.exit(1);
+  });
 
-module.exports = app;
+  const shutdown = async (signal) => {
+    logger.info(`${signal} received. Shutting down...`);
+    await stop();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+module.exports = { app, start, stop };
