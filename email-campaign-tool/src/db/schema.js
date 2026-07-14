@@ -307,6 +307,15 @@ async function initializeSchema() {
     );
 
     -- ═══════════════════════════════════════════════════════════
+    -- APP SETTINGS (key/value; SMTP creds stored encrypted)
+    -- ═══════════════════════════════════════════════════════════
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- ═══════════════════════════════════════════════════════════
     -- DAILY STATS (aggregated)
     -- ═══════════════════════════════════════════════════════════
     CREATE TABLE IF NOT EXISTS daily_stats (
