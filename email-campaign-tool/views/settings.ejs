@@ -115,6 +115,7 @@ function settingsApp() {
 
       const sm = await api.get('/api/settings/smtp');
       this.smtp = { ...this.smtp, ...sm.smtp };
+      this.smtp.pass = '';  // never bind the masked placeholder into the input; blank = keep existing password
     },
 
     async saveSMTP() {
