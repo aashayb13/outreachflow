@@ -95,8 +95,8 @@ Electron packaging.
   - `module.exports = { app, start, stop }`.
 - `package.json`
   - Add devDeps: `electron`, `electron-builder`.
-  - Set Electron entry to `electron/main.js` (via electron-builder
-    `extraMetadata.main` so `npm start` = `node src/server.js` still works).
+  - Set `"main": "electron/main.js"` (Electron's entry). `npm start` is
+    unaffected — it runs `node src/server.js` by explicit path, ignoring `main`.
   - Add scripts: `"electron": "electron ."`, `"dist": "electron-builder --win portable"`.
   - Add `build` config: `appId`, `productName: "OutreachFlow"`,
     `win.target: portable`, `portable.artifactName: "OutreachFlow.exe"`,
