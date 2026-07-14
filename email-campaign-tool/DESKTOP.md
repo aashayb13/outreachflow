@@ -33,7 +33,7 @@ Fill it in and save, then reopen OutreachFlow:
 
 ## Connect Apollo (paid API)
 
-1. Log in → **Settings → Integrations** (the `/integrations` page).
+1. Log in → click **API Integrations** in the sidebar (the `/integrations` page; it's a separate top-level item, not inside Settings).
 2. Add **Apollo** → paste your Apollo API key → **Test** → **Save**.
    The key is stored encrypted in Supabase.
 3. Use **Lists → Apollo Search** to pull and import leads.
