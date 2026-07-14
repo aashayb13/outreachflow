@@ -35,7 +35,7 @@ function cleanOverrides(o) {
 /** Send a single email. Returns { success, messageId, error }. */
 async function sendEmail({ to, subject, html, text, from, replyTo, headers = {}, attachments = [] }) {
   const transport = await getTransporter();
-  const s = cachedSmtp;
+  const s = cachedSmtp || await getEffectiveSmtp();
   const fromAddress = from || `"${s.fromName}" <${s.fromEmail}>`;
   const mailOptions = {
     from: fromAddress,
