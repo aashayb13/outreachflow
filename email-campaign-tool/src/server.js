@@ -145,10 +145,6 @@ app.get('/settings', authenticate, (req, res) => {
   res.render('settings', {
     title: 'Settings',
     page: 'settings',
-    smtp_host: config.smtp.host,
-    smtp_port: config.smtp.port,
-    smtp_user: config.smtp.user ? config.smtp.user.replace(/(.{3}).*(@.*)/, '$1***$2') : '',
-    smtp_from: config.smtp.fromEmail,
     send_rate: config.sendRate.perSecond,
     send_daily: config.sendRate.perDay,
     tracking_domain: config.tracking.domain,

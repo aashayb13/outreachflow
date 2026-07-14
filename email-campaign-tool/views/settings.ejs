@@ -2,20 +2,48 @@
 
 <div x-data="settingsApp()" x-init="load()">
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <!-- SMTP Settings -->
+    <!-- Email (SMTP) Settings -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-      <h3 class="font-semibold text-gray-700 mb-4"><i class="fas fa-server text-gray-400 mr-2"></i>SMTP Configuration</h3>
+      <h3 class="font-semibold text-gray-700 mb-4"><i class="fas fa-envelope text-gray-400 mr-2"></i>Email (SMTP)</h3>
       <div class="space-y-3 text-sm">
-        <div class="flex justify-between"><span class="text-gray-500">Host</span><span class="text-gray-800 font-mono"><%= typeof smtp_host !== 'undefined' ? smtp_host : 'Not configured' %></span></div>
-        <div class="flex justify-between"><span class="text-gray-500">Port</span><span class="text-gray-800"><%= typeof smtp_port !== 'undefined' ? smtp_port : '-' %></span></div>
-        <div class="flex justify-between"><span class="text-gray-500">User</span><span class="text-gray-800"><%= typeof smtp_user !== 'undefined' ? smtp_user : '-' %></span></div>
-        <div class="flex justify-between"><span class="text-gray-500">From</span><span class="text-gray-800"><%= typeof smtp_from !== 'undefined' ? smtp_from : '-' %></span></div>
+        <div>
+          <label class="block text-gray-500 mb-1">From name</label>
+          <input x-model="smtp.fromName" class="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="Your Name" />
+        </div>
+        <div>
+          <label class="block text-gray-500 mb-1">From email</label>
+          <input x-model="smtp.fromEmail" class="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="you@gmail.com" />
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-gray-500 mb-1">SMTP host</label>
+            <input x-model="smtp.host" class="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="smtp.gmail.com" />
+          </div>
+          <div>
+            <label class="block text-gray-500 mb-1">Port</label>
+            <input x-model="smtp.port" type="number" class="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="587" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-gray-500 mb-1">SMTP user</label>
+          <input x-model="smtp.user" class="w-full border border-gray-300 rounded-lg px-3 py-2" placeholder="you@gmail.com" />
+        </div>
+        <div>
+          <label class="block text-gray-500 mb-1">Password / App password</label>
+          <input x-model="smtp.pass" type="password" class="w-full border border-gray-300 rounded-lg px-3 py-2"
+                 :placeholder="smtp.has_pass ? '******** (leave blank to keep current)' : 'Gmail 16-char app password'" />
+        </div>
+        <label class="flex items-center gap-2 text-gray-600">
+          <input type="checkbox" x-model="smtp.secure" /> Use SSL (port 465)
+        </label>
       </div>
-      <button @click="verifySMTP()" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600">
-        <i class="fas fa-plug mr-1"></i> Test Connection
-      </button>
+      <div class="flex items-center gap-2 mt-4">
+        <button @click="saveSMTP()" class="bg-green-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-600"><i class="fas fa-save mr-1"></i> Save</button>
+        <button @click="testSMTP()" class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600"><i class="fas fa-plug mr-1"></i> Test</button>
+        <span class="text-xs text-gray-400" x-text="'Source: ' + (smtp.source || 'env')"></span>
+      </div>
       <p x-show="smtpStatus" class="mt-2 text-sm" :class="smtpOk ? 'text-green-600' : 'text-red-600'" x-text="smtpStatus"></p>
-      <p class="text-xs text-gray-400 mt-3">Edit .env file to change SMTP settings, then restart the server.</p>
+      <p class="text-xs text-gray-400 mt-3">Gmail needs an App Password (2FA must be on). Stored encrypted in your database.</p>
     </div>
 
     <!-- API Keys -->
@@ -76,6 +104,7 @@
 function settingsApp() {
   return {
     apiKeys: [], newKeyName: '', newKey: '', smtpStatus: '', smtpOk: false, suppressionCount: 0,
+    smtp: { host: '', port: 587, secure: false, user: '', pass: '', has_pass: false, fromName: '', fromEmail: '', source: 'env' },
 
     async load() {
       const kData = await api.get('/api/auth/api-keys');
@@ -83,14 +112,25 @@ function settingsApp() {
 
       const sData = await api.get('/api/analytics/suppression?limit=1');
       this.suppressionCount = sData.pagination.total;
+
+      const sm = await api.get('/api/settings/smtp');
+      this.smtp = { ...this.smtp, ...sm.smtp };
     },
 
-    async verifySMTP() {
+    async saveSMTP() {
+      try {
+        const d = await api.put('/api/settings/smtp', this.smtp);
+        this.smtp = { ...this.smtp, ...d.smtp, pass: '' };
+        toast('SMTP settings saved');
+      } catch (e) {}
+    },
+
+    async testSMTP() {
       this.smtpStatus = 'Testing...';
       try {
-        const data = await api.post('/api/auth/verify-smtp');
-        this.smtpOk = data.success;
-        this.smtpStatus = data.success ? 'Connection successful!' : 'Failed: ' + (data.error || 'Unknown error');
+        const d = await api.post('/api/settings/smtp/test', this.smtp);
+        this.smtpOk = d.success;
+        this.smtpStatus = d.success ? 'Connection successful!' : 'Failed: ' + (d.error || 'Unknown error');
       } catch (e) {
         this.smtpOk = false;
         this.smtpStatus = 'Connection failed';
