@@ -23,3 +23,20 @@ test('attachments are passed through to nodemailer', async () => {
   assert.ok(Array.isArray(captured.attachments));
   assert.equal(captured.attachments[0].filename, 'resume.pdf');
 });
+
+test('verifyConnection(overrides) tests ad-hoc settings without saving', async () => {
+  const orig = nodemailer.createTransport;
+  let opts = null;
+  nodemailer.createTransport = (o) => { opts = o; return { verify: async () => true, close() {} }; };
+  mailer.closeTransporter();
+
+  const r = await mailer.verifyConnection({ host: 'smtp.test', port: '465', secure: 'true', user: 'u', pass: 'p' });
+
+  nodemailer.createTransport = orig;
+  mailer.closeTransporter();
+
+  assert.equal(r.success, true);
+  assert.equal(opts.host, 'smtp.test');
+  assert.equal(opts.port, 465);
+  assert.equal(opts.secure, true);
+});

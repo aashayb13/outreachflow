@@ -8,6 +8,11 @@ module.exports = {
   appEmail: process.env.APP_EMAIL || '',
   appPassword: process.env.APP_PASSWORD || '',
 
+  // When true, all auth is bypassed (no login page). The desktop app sets
+  // DISABLE_AUTH=true so the single-user, always-open window opens straight
+  // to the dashboard. Set DISABLE_AUTH=false in settings.env to require login.
+  authDisabled: process.env.DISABLE_AUTH === 'true',
+
   db: {
     // Postgres connection string. On Render this is wired to the managed
     // Postgres service via render.yaml; locally set DATABASE_URL in .env.

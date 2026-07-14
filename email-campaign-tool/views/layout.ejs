@@ -57,11 +57,13 @@
           </a>
         </div>
       </nav>
+      <% if (typeof authDisabled === 'undefined' || !authDisabled) { %>
       <div class="p-3 border-t border-gray-200">
         <button onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>location.href='/login')" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50">
           <i class="fas fa-sign-out-alt w-5 text-center"></i> Logout
         </button>
       </div>
+      <% } %>
     </aside>
 
     <!-- Main content -->
