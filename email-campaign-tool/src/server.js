@@ -87,6 +87,7 @@ app.use('/api/tags', require('./routes/tags'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/assets', require('./routes/assets'));
+app.use('/api/settings', require('./routes/settings'));
 
 // ─── Tracking Routes (public, no auth) ─────────────────────────────
 app.use('/t', require('./routes/tracking'));
