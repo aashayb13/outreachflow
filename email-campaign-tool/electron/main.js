@@ -36,6 +36,9 @@ async function boot() {
   dotenv.config({ path: target });
   process.env.PORT = String(await getFreePort());
   process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+  // Single-user desktop app: no login screen. Override with DISABLE_AUTH=false
+  // in settings.env if you ever want the login back.
+  process.env.DISABLE_AUTH = process.env.DISABLE_AUTH || 'true';
 
   try {
     serverApi = require('../src/server');
@@ -67,7 +70,7 @@ function createWindow() {
     shell.openExternal(url);
     return { action: 'deny' };
   });
-  mainWindow.loadURL(`http://localhost:${process.env.PORT}`);
+  mainWindow.loadURL(`http://127.0.0.1:${process.env.PORT}`);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 

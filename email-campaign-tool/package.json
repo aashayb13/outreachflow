@@ -11,7 +11,7 @@
     "test": "node --test",
     "electron": "electron .",
     "icon": "node electron/build/make-icon.js",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -56,7 +56,14 @@
     "asar": true,
     "files": ["src/**/*", "views/**/*", "electron/**/*", "package.json"],
     "directories": { "output": "dist" },
-    "win": { "target": "portable", "icon": "electron/build/icon.png" },
-    "portable": { "artifactName": "OutreachFlow.exe" }
+    "win": { "target": "nsis", "icon": "electron/build/icon.png" },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OutreachFlow",
+      "artifactName": "OutreachFlow-Setup.exe"
+    }
   }
 }

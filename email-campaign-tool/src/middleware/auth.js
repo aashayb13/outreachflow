@@ -7,6 +7,14 @@ const config = require('../config');
  * Authenticate requests via API key (header) or JWT (cookie/header).
  */
 async function authenticate(req, res, next) {
+  // When auth is disabled (single-user desktop app), grant full admin access
+  // to every request — no login required.
+  if (config.authDisabled) {
+    req.authMethod = 'none';
+    req.permissions = ['read', 'write', 'admin'];
+    return next();
+  }
+
   // Check API key first
   const apiKey = req.headers['x-api-key'] || req.query.api_key;
   if (apiKey) {
@@ -69,6 +77,7 @@ async function authenticate(req, res, next) {
  */
 function requirePermission(permission) {
   return (req, res, next) => {
+    if (config.authDisabled) return next();
     if (!req.permissions || !req.permissions.includes(permission)) {
       return res.status(403).json({ error: `Permission '${permission}' required` });
     }

@@ -4,16 +4,24 @@ Run OutreachFlow as a desktop app on Windows — same UI as the deployed version
 in its own window. Data stays in Supabase; Apollo and Gmail are reached over the
 internet. Once this works you can delete the paid Render service.
 
-## Build the .exe
+## Build the installer
 
 ```bash
 cd email-campaign-tool
 npm install
 npm run icon      # generates the app icon (one-time)
-npm run dist      # builds dist/OutreachFlow.exe
+npm run dist      # builds dist/OutreachFlow-Setup.exe
 ```
 
-Copy `dist/OutreachFlow.exe` to your Desktop.
+> Requires Windows **Developer Mode** on (Settings → System → For developers) so
+> electron-builder can extract its toolchain — otherwise the build fails with a
+> "cannot create symbolic link" error.
+
+Run **`dist/OutreachFlow-Setup.exe`** once. It installs per-user (no admin needed)
+and creates an **OutreachFlow** shortcut on your Desktop and Start Menu. Launch it
+from there — no `ffmpeg.dll`/DLL errors, because all files are installed in place
+(unlike the old single-file "portable" build, which failed to unpack DLLs on some
+machines).
 
 ## First launch — settings.env
 
@@ -29,7 +37,9 @@ Fill it in and save, then reopen OutreachFlow:
   with your DB password in the string.
 - `APP_SECRET` — any long random string. **Set once, never change** (it encrypts
   your Apollo key and SMTP password in Supabase).
-- `APP_EMAIL` / `APP_PASSWORD` — the login you'll use for the app.
+
+That's it — the app opens straight to the dashboard with **no login**. (To turn a
+login screen back on, set `DISABLE_AUTH=false` and add `APP_EMAIL`/`APP_PASSWORD`.)
 
 ## Connect Apollo (paid API)
 

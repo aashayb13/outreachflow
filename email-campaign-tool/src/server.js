@@ -63,6 +63,9 @@ app.use(expressLayouts);
 app.set('layout', 'layout');
 app.set('layout extractScripts', true);
 
+// Expose auth mode to every view (hide the Logout control when auth is off).
+app.locals.authDisabled = config.authDisabled;
+
 // ─── Health Check (for Render / uptime monitors) ───────────────────
 app.get('/health', async (req, res) => {
   try {
@@ -95,7 +98,10 @@ app.use('/t', require('./routes/tracking'));
 // ─── Dashboard Routes ───────────────────────────────────────────────
 const { authenticate } = require('./middleware/auth');
 
-app.get('/login', (req, res) => res.render('login', { layout: false }));
+app.get('/login', (req, res) => {
+  if (config.authDisabled) return res.redirect('/');
+  res.render('login', { layout: false });
+});
 
 app.get('/', authenticate, (req, res) => {
   res.render('dashboard', { title: 'Dashboard', page: 'dashboard' });
@@ -163,8 +169,8 @@ async function start() {
   await initializeSchema();
 
   await new Promise((resolve) => {
-    server = app.listen(config.port, () => {
-      logger.info(`OutreachFlow running on http://localhost:${config.port} (env: ${config.env})`);
+    server = app.listen(config.port, '127.0.0.1', () => {
+      logger.info(`OutreachFlow running on http://127.0.0.1:${config.port} (env: ${config.env})`);
       // Background scheduler stays off by preference (send-now mode).
       // startScheduler();
       resolve();
